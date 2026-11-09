@@ -2002,7 +2002,7 @@ static irqreturn_t rk628_csi_irq_handler(int irq, void *dev_id)
 
 static void rk628_csi_irq_poll_timer(struct timer_list *t)
 {
-	struct rk628_csi *csi = from_timer(csi, t, timer);
+	struct rk628_csi *csi = timer_container_of(csi, t, timer);
 
 	schedule_work(&csi->work_i2c_poll);
 	mod_timer(&csi->timer, jiffies + msecs_to_jiffies(POLL_INTERVAL_MS));
@@ -2369,7 +2369,7 @@ static int rk628_csi_set_fmt(struct v4l2_subdev *sd,
 	struct v4l2_mbus_framefmt *mbus_fmt = &format->format;
 
 	if (format->which == V4L2_SUBDEV_FORMAT_TRY) {
-		*v4l2_subdev_get_try_format(sd, sd_state, format->pad) = *mbus_fmt;
+		*v4l2_subdev_state_get_format(sd_state, format->pad) = *mbus_fmt;
 		return 0;
 	}
 
@@ -3101,14 +3101,44 @@ static const struct v4l2_subdev_core_ops rk628_csi_core_ops = {
 
 static const struct v4l2_subdev_video_ops rk628_csi_video_ops = {
 	.g_input_status = rk628_csi_g_input_status,
-	.s_dv_timings = rk628_csi_s_dv_timings,
-	.g_dv_timings = rk628_csi_g_dv_timings,
-	.query_dv_timings = rk628_csi_query_dv_timings,
 	.s_stream = rk628_csi_s_stream,
-	.g_frame_interval = rk628_csi_g_frame_interval,
 };
 
+static int rk628_csi_pad_s_dv_timings(struct v4l2_subdev *sd,
+		unsigned int pad, struct v4l2_dv_timings *timings)
+{
+	return pad ? -EINVAL : rk628_csi_s_dv_timings(sd, timings);
+}
+
+static int rk628_csi_pad_g_dv_timings(struct v4l2_subdev *sd,
+		unsigned int pad, struct v4l2_dv_timings *timings)
+{
+	return pad ? -EINVAL : rk628_csi_g_dv_timings(sd, timings);
+}
+
+static int rk628_csi_pad_query_dv_timings(struct v4l2_subdev *sd,
+		unsigned int pad, struct v4l2_dv_timings *timings)
+{
+	return pad ? -EINVAL : rk628_csi_query_dv_timings(sd, timings);
+}
+
+static int rk628_csi_pad_get_frame_interval(struct v4l2_subdev *sd,
+		struct v4l2_subdev_state *state,
+		struct v4l2_subdev_frame_interval *fi)
+{
+	if (fi->pad || fi->stream)
+		return -EINVAL;
+	if (fi->which != V4L2_SUBDEV_FORMAT_ACTIVE)
+		return -EINVAL;
+
+	return rk628_csi_g_frame_interval(sd, fi);
+}
+
 static const struct v4l2_subdev_pad_ops rk628_csi_pad_ops = {
+	.s_dv_timings = rk628_csi_pad_s_dv_timings,
+	.g_dv_timings = rk628_csi_pad_g_dv_timings,
+	.query_dv_timings = rk628_csi_pad_query_dv_timings,
+	.get_frame_interval = rk628_csi_pad_get_frame_interval,
 	.enum_mbus_code = rk628_csi_enum_mbus_code,
 	.enum_frame_size = rk628_csi_enum_frame_sizes,
 	.enum_frame_interval = rk628_csi_enum_frame_interval,
@@ -3605,8 +3635,7 @@ static int rk628_csi_get_multi_dev_info(struct rk628_csi *csi)
 	return 0;
 }
 
-static int rk628_csi_probe(struct i2c_client *client,
-			  const struct i2c_device_id *id)
+static int rk628_csi_probe(struct i2c_client *client)
 {
 	struct rk628_csi *csi;
 	struct v4l2_subdev *sd;
@@ -3916,7 +3945,7 @@ static int rk628_csi_remove(struct i2c_client *client)
 		disable_irq(csi->plugin_irq);
 
 	if (!csi->hdmirx_irq) {
-		del_timer_sync(&csi->timer);
+		timer_delete_sync(&csi->timer);
 		flush_work(&csi->work_i2c_poll);
 	}
 	cancel_delayed_work_sync(&csi->delayed_work_enable_hotplug);

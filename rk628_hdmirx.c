@@ -705,7 +705,7 @@ static void rk628_hdmirx_audio_shutdown(struct device *dev, void *data)
 }
 
 static int rk628_hdmirx_audio_get_dai_id(struct snd_soc_component *comment,
-				   struct device_node *endpoint)
+				   struct device_node *endpoint, void *data)
 {
 	dev_dbg(comment->dev, "%s\n", __func__);
 	return 0;

@@ -1,0 +1,16 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0
+# Build and install the overlay after DKMS installs the modules.
+set -e
+
+print() { printf '  %-7s %s\n' "$1" "$2"; }
+cd "$(dirname "$0")"
+
+OVERLAY_DIR=/boot/firmware/overlays
+
+BUILD_DIR=$(mktemp -d)
+trap 'rm -rf "$BUILD_DIR"' EXIT
+make dtbo BUILD_DIR="$BUILD_DIR"
+
+print INSTALL "$OVERLAY_DIR/rk628-pi5.dtbo"
+install -m 644 "$BUILD_DIR/rk628-pi5.dtbo" "$OVERLAY_DIR/rk628-pi5.dtbo"

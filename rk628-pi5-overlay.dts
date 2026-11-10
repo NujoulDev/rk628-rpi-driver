@@ -5,7 +5,7 @@
 / {
 	compatible = "brcm,bcm2712";
 
-	fragment@0 {
+	i2c_frag: fragment@0 {
 		target = <&i2c_csi_dsi0>;
 		__overlay__ {
 			#address-cells = <1>;
@@ -30,7 +30,7 @@
 
 				port {
 					rk628_out: endpoint {
-						remote-endpoint = <&csi0_in>;
+						remote-endpoint = <&csi_in>;
 						clock-lanes = <0>;
 						data-lanes = <1 2 3 4>;
 					};
@@ -39,12 +39,12 @@
 		};
 	};
 
-	fragment@1 {
+	csi_frag: fragment@1 {
 		target = <&csi0>;
 		__overlay__ {
 			status = "okay";
 			port {
-				csi0_in: endpoint {
+				csi_in: endpoint {
 					remote-endpoint = <&rk628_out>;
 					clock-lanes = <0>;
 					data-lanes = <1 2 3 4>;
@@ -53,7 +53,7 @@
 		};
 	};
 
-	fragment@2 {
+	power_frag: fragment@2 {
 		target = <&cam0_reg>;
 		__overlay__ {
 			status = "okay";
@@ -72,5 +72,32 @@
 				bias-disable;
 			};
 		};
+	};
+
+	fragment@8 {
+		target = <&rk628_out>;
+		__dormant__ {
+			data-lanes = <1 2>;
+		};
+	};
+
+	fragment@9 {
+		target = <&csi_in>;
+		__dormant__ {
+			data-lanes = <1 2>;
+		};
+	};
+
+	__overrides__ {
+		cam0 = <&i2c_frag>, "target:0=", <&i2c_csi_dsi0>,
+		       <&csi_frag>, "target:0=", <&csi0>,
+		       <&power_frag>, "target:0=", <&cam0_reg>,
+		       <&rk628>, "vdd-supply:0=", <&cam0_reg>;
+		cam1 = <&i2c_frag>, "target:0=", <&i2c_csi_dsi1>,
+		       <&csi_frag>, "target:0=", <&csi1>,
+		       <&power_frag>, "target:0=", <&cam1_reg>,
+		       <&rk628>, "vdd-supply:0=", <&cam1_reg>;
+		2lane = <0>, "+8+9";
+		4lane = <0>, "-8-9";
 	};
 };

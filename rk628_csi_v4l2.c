@@ -20,6 +20,7 @@
 #include <linux/of_graph.h>
 #include <linux/platform_device.h>
 #include <linux/reset.h>
+#include <linux/regulator/consumer.h>
 #include <linux/rk-camera-module.h>
 #include <linux/slab.h>
 #include <linux/timer.h>
@@ -85,6 +86,7 @@ struct rk628_csi {
 	struct gpio_desc *reset_gpio;
 	struct gpio_desc *power_gpio;
 	struct gpio_desc *plugin_det_gpio;
+	struct regulator *vdd;
 	struct clk *soc_24M;
 	struct clk *clk_hdmirx_aud;
 	struct clk *clk_vop;
@@ -510,7 +512,7 @@ static int rk628_csi_get_detected_timings(struct v4l2_subdev *sd,
 	if (csi->rk628->is_10bit)
 		csi->mbus_fmt_code = MEDIA_BUS_FMT_YUYV10_2X10;
 	else if (csi->rk628->tx_mode == CSI_MODE)
-		csi->mbus_fmt_code = MEDIA_BUS_FMT_UYVY8_2X8;
+		csi->mbus_fmt_code = MEDIA_BUS_FMT_UYVY8_1X16;
 	else
 		csi->mbus_fmt_code = MEDIA_BUS_FMT_RGB888_1X24;
 
@@ -2374,7 +2376,7 @@ static int rk628_csi_set_fmt(struct v4l2_subdev *sd,
 	}
 
 	switch (mbus_fmt->code) {
-	case MEDIA_BUS_FMT_UYVY8_2X8:
+	case MEDIA_BUS_FMT_UYVY8_1X16:
 	case MEDIA_BUS_FMT_RGB888_1X24:
 	case MEDIA_BUS_FMT_YUYV10_2X10:
 		break;
@@ -3244,17 +3246,38 @@ static void rk628_csi_audio_info_cb(struct rk628 *rk628, bool on)
 
 static int rk628_csi_power_on(struct rk628_csi *csi)
 {
-	clk_prepare_enable(csi->soc_24M);
+	int ret;
+
+	if (csi->vdd) {
+		ret = regulator_enable(csi->vdd);
+		if (ret)
+			return ret;
+	}
+
+	ret = clk_prepare_enable(csi->soc_24M);
+	if (ret) {
+		if (csi->vdd) {
+			int disable_ret = regulator_disable(csi->vdd);
+
+			if (disable_ret)
+				dev_err(csi->dev, "failed to unwind vdd: %d\n",
+					disable_ret);
+		}
+		return ret;
+	}
+
 	if (csi->enable_gpio) {
 		gpiod_set_value(csi->enable_gpio, 1);
 		usleep_range(10000, 11000);
 	}
-	gpiod_set_value(csi->reset_gpio, 0);
-	usleep_range(10000, 11000);
-	gpiod_set_value(csi->reset_gpio, 1);
-	usleep_range(10000, 11000);
-	gpiod_set_value(csi->reset_gpio, 0);
-	usleep_range(10000, 11000);
+	if (csi->reset_gpio) {
+		gpiod_set_value(csi->reset_gpio, 0);
+		usleep_range(10000, 11000);
+		gpiod_set_value(csi->reset_gpio, 1);
+		usleep_range(10000, 11000);
+		gpiod_set_value(csi->reset_gpio, 0);
+		usleep_range(10000, 11000);
+	}
 
 	if (csi->power_gpio) {
 		gpiod_set_value(csi->power_gpio, 1);
@@ -3266,20 +3289,32 @@ static int rk628_csi_power_on(struct rk628_csi *csi)
 
 static int rk628_csi_power_off(struct rk628_csi *csi)
 {
+	int ret;
+
 	if (csi->enable_gpio) {
 		gpiod_set_value(csi->enable_gpio, 0);
 		usleep_range(10000, 11000);
 	}
-	gpiod_set_value(csi->reset_gpio, 1);
-	usleep_range(10000, 11000);
-	gpiod_set_value(csi->reset_gpio, 0);
-	usleep_range(10000, 11000);
-	gpiod_set_value(csi->reset_gpio, 1);
-	usleep_range(10000, 11000);
+	if (csi->reset_gpio) {
+		gpiod_set_value(csi->reset_gpio, 1);
+		usleep_range(10000, 11000);
+		gpiod_set_value(csi->reset_gpio, 0);
+		usleep_range(10000, 11000);
+		gpiod_set_value(csi->reset_gpio, 1);
+		usleep_range(10000, 11000);
+	}
 
 	if (csi->power_gpio) {
 		gpiod_set_value(csi->power_gpio, 0);
 		usleep_range(10000, 11000);
+	}
+
+	if (csi->vdd) {
+		ret = regulator_disable(csi->vdd);
+		if (ret) {
+			dev_err(csi->dev, "failed to disable vdd: %d\n", ret);
+			return ret;
+		}
 	}
 	clk_disable_unprepare(csi->soc_24M);
 
@@ -3291,10 +3326,13 @@ static int rk628_csi_resume(struct device *dev)
 	struct i2c_client *client = to_i2c_client(dev);
 	struct v4l2_subdev *sd = i2c_get_clientdata(client);
 	struct rk628_csi *csi = to_csi(sd);
+	int ret;
 
 	v4l2_info(sd, "%s: resume!\n", __func__);
 
-	rk628_csi_power_on(csi);
+	ret = rk628_csi_power_on(csi);
+	if (ret)
+		return ret;
 	rk628_cru_initialize(csi->rk628);
 	rk628_clk_set_rate(csi->rk628, CGU_CLK_CPLL, CPLL_REF_CLK);
 	rk628_csi_initial(sd);
@@ -3343,13 +3381,17 @@ static int rk628_csi_probe_of(struct rk628_csi *csi)
 	bool scaler_en = false;
 	bool continues_clk = false;
 
-	csi->soc_24M = devm_clk_get(dev, "soc_24M");
-	if (csi->soc_24M == ERR_PTR(-ENOENT))
-		csi->soc_24M = NULL;
-	if (IS_ERR(csi->soc_24M)) {
-		ret = PTR_ERR(csi->soc_24M);
-		dev_err(dev, "Unable to get soc_24M: %d\n", ret);
+	if (of_property_present(dev->of_node, "vdd-supply")) {
+		csi->vdd = devm_regulator_get_optional(dev, "vdd");
+		if (IS_ERR(csi->vdd))
+			return dev_err_probe(dev, PTR_ERR(csi->vdd),
+					     "failed to get vdd supply\n");
 	}
+
+	csi->soc_24M = devm_clk_get_optional(dev, "soc_24M");
+	if (IS_ERR(csi->soc_24M))
+		return dev_err_probe(dev, PTR_ERR(csi->soc_24M),
+				     "Unable to get soc_24M\n");
 
 	csi->enable_gpio = devm_gpiod_get_optional(dev, "enable",
 						     GPIOD_OUT_LOW);
@@ -3359,7 +3401,7 @@ static int rk628_csi_probe_of(struct rk628_csi *csi)
 		return ret;
 	}
 
-	csi->reset_gpio = devm_gpiod_get(dev, "reset", GPIOD_OUT_LOW);
+	csi->reset_gpio = devm_gpiod_get_optional(dev, "reset", GPIOD_OUT_LOW);
 	if (IS_ERR(csi->reset_gpio)) {
 		ret = PTR_ERR(csi->reset_gpio);
 		dev_err(dev, "failed to request reset GPIO: %d\n", ret);
@@ -3479,7 +3521,7 @@ put_node:
 }
 
 static const struct rk628_plat_data rk628_csi_data = {
-	.bus_fmt = MEDIA_BUS_FMT_UYVY8_2X8,
+	.bus_fmt = MEDIA_BUS_FMT_UYVY8_1X16,
 	.tx_mode = CSI_MODE,
 };
 
@@ -3702,7 +3744,9 @@ static int rk628_csi_probe(struct i2c_client *client)
 		return err;
 	}
 
-	rk628_csi_power_on(csi);
+	err = rk628_csi_power_on(csi);
+	if (err)
+		return err;
 	rk628_cru_initialize(csi->rk628);
 
 	rk628_version_parse(rk628);
@@ -3797,7 +3841,7 @@ static int rk628_csi_probe(struct i2c_client *client)
 	if (csi->rk628->tx_mode == DSI_MODE)
 		csi->mbus_fmt_code = MEDIA_BUS_FMT_RGB888_1X24;
 	else
-		csi->mbus_fmt_code = MEDIA_BUS_FMT_UYVY8_2X8;
+		csi->mbus_fmt_code = MEDIA_BUS_FMT_UYVY8_1X16;
 
 	memset(facing, 0, sizeof(facing));
 	if (strcmp(csi->module_facing, "back") == 0)

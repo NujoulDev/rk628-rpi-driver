@@ -1,0 +1,76 @@
+// SPDX-License-Identifier: GPL-2.0
+/dts-v1/;
+/plugin/;
+
+/ {
+	compatible = "brcm,bcm2712";
+
+	fragment@0 {
+		target = <&i2c_csi_dsi0>;
+		__overlay__ {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			status = "okay";
+
+			rk628: hdmi-bridge@50 {
+				compatible = "rockchip,rk628-csi-v4l2";
+				reg = <0x50>;
+				status = "okay";
+				vdd-supply = <&cam0_reg>;
+				pinctrl-names = "default";
+				pinctrl-0 = <&rk628_irq_pins>;
+				interrupt-parent = <&rp1_gpio>;
+				interrupts = <23 4>; // GPIO23, level high, J8205 pin6
+				plugin-det-gpios = <&rp1_gpio 24 1>; // GPIO24, active low, J8205 pin5
+				continues-clk;
+				rockchip,camera-module-index = <0>;
+				rockchip,camera-module-facing = "back";
+				rockchip,camera-module-name = "Radxa-RK628H";
+				rockchip,camera-module-lens-name = "HDMI";
+
+				port {
+					rk628_out: endpoint {
+						remote-endpoint = <&csi0_in>;
+						clock-lanes = <0>;
+						data-lanes = <1 2 3 4>;
+					};
+				};
+			};
+		};
+	};
+
+	fragment@1 {
+		target = <&csi0>;
+		__overlay__ {
+			status = "okay";
+			port {
+				csi0_in: endpoint {
+					remote-endpoint = <&rk628_out>;
+					clock-lanes = <0>;
+					data-lanes = <1 2 3 4>;
+				};
+			};
+		};
+	};
+
+	fragment@2 {
+		target = <&cam0_reg>;
+		__overlay__ {
+			status = "okay";
+			regulator-always-on;
+			startup-delay-us = <100000>;
+		};
+	};
+
+	fragment@3 {
+		target = <&rp1_gpio>;
+		__overlay__ {
+			rk628_irq_pins: rk628-irq-pins {
+				pins = "gpio23", "gpio24";
+				function = "gpio";
+				input-enable;
+				bias-disable;
+			};
+		};
+	};
+};

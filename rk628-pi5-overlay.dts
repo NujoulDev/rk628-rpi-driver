@@ -74,6 +74,53 @@
 		};
 	};
 
+	fragment@4 {
+		target = <&rk628>;
+		__dormant__ {
+			i2s-enable-default;
+		};
+	};
+
+	fragment@5 {
+		target = <&i2s_clk_consumer>;
+		__dormant__ {
+			status = "okay";
+		};
+	};
+
+	fragment@6 {
+		target-path = "/";
+		__dormant__ {
+			rk628_audio: rk628-audio-codec {
+				compatible = "linux,spdif-dir";
+				#sound-dai-cells = <0>;
+				status = "okay";
+			};
+		};
+	};
+
+	fragment@7 {
+		target = <&sound>;
+		__dormant__ {
+			compatible = "simple-audio-card";
+			status = "okay";
+			simple-audio-card,name = "RK628HDMI";
+			simple-audio-card,format = "i2s";
+			simple-audio-card,bitclock-master = <&rk628_audio_master>;
+			simple-audio-card,frame-master = <&rk628_audio_master>;
+
+			simple-audio-card,cpu {
+				sound-dai = <&i2s_clk_consumer>;
+				dai-tdm-slot-num = <2>;
+				dai-tdm-slot-width = <32>;
+			};
+
+			rk628_audio_master: simple-audio-card,codec {
+				sound-dai = <&rk628_audio>;
+			};
+		};
+	};
+
 	fragment@8 {
 		target = <&rk628_out>;
 		__dormant__ {
@@ -89,6 +136,7 @@
 	};
 
 	__overrides__ {
+		audio = <0>, "+4+5+6+7";
 		cam0 = <&i2c_frag>, "target:0=", <&i2c_csi_dsi0>,
 		       <&csi_frag>, "target:0=", <&csi0>,
 		       <&power_frag>, "target:0=", <&cam0_reg>,

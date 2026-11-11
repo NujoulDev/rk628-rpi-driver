@@ -1,0 +1,16 @@
+The RK628 Raspberry Pi driver is provided under the GNU General Public
+License version 2 only (GPL-2.0), except where individual files specify
+otherwise. The full GPL version 2 license text is provided in:
+
+	LICENSES/preferred/GPL-2.0
+
+Individual files retain their original copyright notices and SPDX license
+identifiers. Those identifiers specify the license terms for each file;
+this notice does not replace or change them.
+
+Some imported UAPI headers offer a choice between GPL-2.0-or-later with
+the Linux syscall exception and MIT. This project distributes those headers
+under the GPL option with the syscall exception. The exception text is
+provided in:
+
+	LICENSES/exceptions/Linux-syscall-note

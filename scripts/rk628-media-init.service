@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: GPL-2.0
+[Unit]
+Description=Initialize RK628 capture media pipeline
+Requires=sys-kernel-debug.mount
+After=sys-kernel-debug.mount
+
+[Service]
+Type=simple
+ExecStart=/bin/sh /usr/local/libexec/rk628/media.sh
+RemainAfterExit=yes
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

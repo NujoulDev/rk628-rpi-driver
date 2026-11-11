@@ -1,11 +1,22 @@
 # SPDX-License-Identifier: GPL-2.0
-# Standalone module build against prepared Raspberry Pi kernel headers.
+# RK628 modules and DTBO
 KDIR ?= /lib/modules/$(shell uname -r)/build
 DTC ?= dtc
-# DTC does not recognize Raspberry Pi __dormant__ fragment unit addresses.
+DTS_CPP ?= cpp
+# Raspberry Pi __dormant__ fragments trigger this warning
 DTC_FLAGS := -@ -Wno-unit_address_vs_reg -I dts -O dtb
 BUILD_DIR := $(CURDIR)/build
 SOURCES := $(wildcard *.c *.h)
+PLATFORM ?= $(shell grep '^RK628_PLATFORM=' dkms.conf | cut -d'"' -f2)
+DTBO := $(BUILD_DIR)/rk628-$(PLATFORM).dtbo
+
+ifneq ($(filter all dtbo,$(or $(MAKECMDGOALS),all)),)
+ifneq ($(PLATFORM),pi4)
+ifneq ($(PLATFORM),pi5)
+$(error Specify PLATFORM=pi4 or PLATFORM=pi5)
+endif
+endif
+endif
 
 .PHONY: all modules module dtbo prepare clean
 all: modules dtbo
@@ -20,11 +31,13 @@ prepare:
 modules: prepare
 	$(MAKE) -C "$(KDIR)" M="$(BUILD_DIR)" modules
 
-dtbo: $(BUILD_DIR)/rk628-pi5.dtbo
+dtbo: $(DTBO)
 
-$(BUILD_DIR)/rk628-pi5.dtbo: rk628-pi5-overlay.dts
+$(BUILD_DIR)/rk628-%.dtbo: rk628-%-overlay.dts rk628-common.dtsi
 	@mkdir -p "$(BUILD_DIR)"
-	$(DTC) $(DTC_FLAGS) -o "$@" "$<"
+	$(DTS_CPP) -nostdinc -undef -D__DTS__ -x assembler-with-cpp -P \
+		"$<" -o "$(@:.dtbo=.dts)"
+	$(DTC) $(DTC_FLAGS) -o "$@" "$(@:.dtbo=.dts)"
 
 clean:
 	$(RM) -r "$(BUILD_DIR)"

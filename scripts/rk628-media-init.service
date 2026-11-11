@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-2.0
 [Unit]
-Description=Initialize RK628 capture media pipeline
+Description=RK628 media initialization
 Requires=sys-kernel-debug.mount
 After=sys-kernel-debug.mount
 

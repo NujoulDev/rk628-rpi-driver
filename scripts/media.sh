@@ -1,6 +1,6 @@
 #!/bin/sh
 # SPDX-License-Identifier: GPL-2.0
-# Configure the Pi 5 RK628 capture path once a valid HDMI signal is available
+# Initialize Pi 5 capture
 set -eu
 
 export LC_ALL=C
@@ -8,22 +8,21 @@ export LC_ALL=C
 die() { echo "Error: $*" >&2; exit 1; }
 
 if [ "${1:-}" = --help ] || [ "${1:-}" = -h ]; then
-  echo "Usage: sudo sh /path/to/media.sh"
-  echo "Wait for HDMI, configure the Pi 5 capture path, then exit"
-  echo "Stop capture applications before running this script"
-  echo "Requires mounted debugfs; press Ctrl+C to stop waiting"
+  echo "Usage: sudo sh media.sh"
+  echo "Wait for HDMI and configure Pi 5 capture"
+  echo "Stop capture applications first"
   exit 0
 fi
-[ "$#" -eq 0 ] || die "Unexpected arguments; use --help"
+[ "$#" -eq 0 ] || die "Unexpected argument: $1"
 [ "$(id -u)" -eq 0 ] || die "Run as root"
 
 for command in media-ctl v4l2-ctl awk grep flock timeout mountpoint; do
   command -v "$command" >/dev/null 2>&1 || die "Missing command: $command"
 done
-mountpoint -q /sys/kernel/debug || die "Mount debugfs at /sys/kernel/debug first"
+mountpoint -q /sys/kernel/debug || die "debugfs not mounted at /sys/kernel/debug"
 
 exec 9>/run/lock/rk628-media.lock
-flock -n 9 || die "Another RK628 media configuration is running"
+flock -n 9 || die "media.sh is already running"
 
 find_entity() {
   printf '%s\n' "$TOPOLOGY" | awk -v kind="$1" '
@@ -155,9 +154,9 @@ $current
 EOF
 case "$CODE" in
   0x200f) BUS_FORMAT=UYVY8_1X16; PIXEL_FORMAT=UYVY ;;
-  *) die "Unsupported CSI output code $CODE; no memory format mapping implemented" ;;
+  *) die "Unsupported CSI format: $CODE" ;;
 esac
-[ "$FIELD" = None ] || die "Unsupported field $FIELD; only progressive capture is configured"
+[ "$FIELD" = None ] || die "Unsupported field: $FIELD (expected None)"
 
 media-ctl -d "$MEDIA" -l "\"$CSI_ENTITY\":$CSI_SOURCE_PAD -> \"$VIDEO_ENTITY\":$VIDEO_PAD [1]"
 for pad in "$CSI_SINK_PAD" "$CSI_SOURCE_PAD"; do
@@ -177,8 +176,8 @@ printf '%s\n' "$video_format" | awk -v w="$WIDTH" -v h="$HEIGHT" -v pix="$PIXEL_
   /Pixel Format[[:space:]]*:/ {format = $4; gsub(/\047/, "", format)}
   /^[[:space:]]*Field[[:space:]]*:/ {field = $3}
   END {exit !(width == w && height == h && format == pix && field == "None")}
-' || die "Video format readback does not match the requested configuration"
-final=$(read_signal) || die "HDMI signal lost during configuration; run again after it stabilizes"
-[ "$final" = "$current" ] || die "CSI output changed during configuration; run again"
+' || die "Video format mismatch"
+final=$(read_signal) || die "HDMI signal lost; retry when stable"
+[ "$final" = "$current" ] || die "CSI output changed; retry"
 
 echo "Ready: $VIDEO ${WIDTH}x${HEIGHT} $PIXEL_FORMAT"

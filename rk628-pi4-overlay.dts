@@ -1,0 +1,61 @@
+// SPDX-License-Identifier: GPL-2.0
+/dts-v1/;
+/plugin/;
+
+#include "rk628-common.dtsi"
+
+/ {
+	compatible = "brcm,bcm2711";
+
+	fragment@2 {
+		target = <&cam1_reg>;
+		__overlay__ {
+			status = "disabled";
+		};
+	};
+
+	fragment@3 {
+		target = <&gpio>;
+		__overlay__ {
+			rk628_irq_pins: rk628-irq-pins {
+				brcm,pins = <23 24>;
+				brcm,function = <0>;
+				brcm,pull = <0>;
+			};
+		};
+	};
+
+	fragment@8 {
+		target = <&i2c0if>;
+		__overlay__ {
+			status = "okay";
+		};
+	};
+
+	fragment@9 {
+		target = <&i2c0mux>;
+		__overlay__ {
+			status = "okay";
+		};
+	};
+};
+
+&csi_frag {
+	__overlay__ {
+		compatible = "brcm,bcm2835-unicam-legacy"; // Select the legacy Unicam driver.
+	};
+};
+
+&rk628 {
+	interrupt-parent = <&gpio>;
+	plugin-det-gpios = <&gpio 24 1>; // GPIO24, active low
+	reset-gpios = <&expgpio 5 1>; // CAM_IO0, active low
+};
+
+&rk628_out {
+	data-lanes = <1 2>;
+};
+
+&csi_in {
+	data-lanes = <1 2>;
+};

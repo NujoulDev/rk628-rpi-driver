@@ -1,16 +1,21 @@
 #!/bin/sh
 # SPDX-License-Identifier: GPL-2.0
-# Build and install the overlay after DKMS installs the modules.
+# Install DTBO after DKMS
 set -e
 
 print() { printf '  %-7s %s\n' "$1" "$2"; }
 cd "$(dirname "$0")"
 
 OVERLAY_DIR=/boot/firmware/overlays
+PLATFORM=$(grep '^RK628_PLATFORM=' dkms.conf | cut -d'"' -f2)
+case "$PLATFORM" in
+  pi4|pi5) ;;
+  *) echo "Error: invalid RK628_PLATFORM in dkms.conf" >&2; exit 1 ;;
+esac
 
 BUILD_DIR=$(mktemp -d)
 trap 'rm -rf "$BUILD_DIR"' EXIT
-make dtbo BUILD_DIR="$BUILD_DIR"
+make dtbo PLATFORM="$PLATFORM" BUILD_DIR="$BUILD_DIR"
 
-print INSTALL "$OVERLAY_DIR/rk628-pi5.dtbo"
-install -m 644 "$BUILD_DIR/rk628-pi5.dtbo" "$OVERLAY_DIR/rk628-pi5.dtbo"
+print INSTALL "$OVERLAY_DIR/rk628-$PLATFORM.dtbo"
+install -m 644 "$BUILD_DIR/rk628-$PLATFORM.dtbo" "$OVERLAY_DIR/rk628-$PLATFORM.dtbo"

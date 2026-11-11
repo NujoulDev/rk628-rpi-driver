@@ -2,56 +2,10 @@
 /dts-v1/;
 /plugin/;
 
+#include "rk628-common.dtsi"
+
 / {
 	compatible = "brcm,bcm2712";
-
-	i2c_frag: fragment@0 {
-		target = <&i2c_csi_dsi0>;
-		__overlay__ {
-			#address-cells = <1>;
-			#size-cells = <0>;
-			status = "okay";
-
-			rk628: hdmi-bridge@50 {
-				compatible = "rockchip,rk628-csi-v4l2";
-				reg = <0x50>;
-				status = "okay";
-				vdd-supply = <&cam0_reg>;
-				pinctrl-names = "default";
-				pinctrl-0 = <&rk628_irq_pins>;
-				interrupt-parent = <&rp1_gpio>;
-				interrupts = <23 4>; // GPIO23, level high, J8205 pin6
-				plugin-det-gpios = <&rp1_gpio 24 1>; // GPIO24, active low, J8205 pin5
-				continues-clk;
-				rockchip,camera-module-index = <0>;
-				rockchip,camera-module-facing = "back";
-				rockchip,camera-module-name = "Radxa-RK628H";
-				rockchip,camera-module-lens-name = "HDMI";
-
-				port {
-					rk628_out: endpoint {
-						remote-endpoint = <&csi_in>;
-						clock-lanes = <0>;
-						data-lanes = <1 2 3 4>;
-					};
-				};
-			};
-		};
-	};
-
-	csi_frag: fragment@1 {
-		target = <&csi0>;
-		__overlay__ {
-			status = "okay";
-			port {
-				csi_in: endpoint {
-					remote-endpoint = <&rk628_out>;
-					clock-lanes = <0>;
-					data-lanes = <1 2 3 4>;
-				};
-			};
-		};
-	};
 
 	power_frag: fragment@2 {
 		target = <&cam0_reg>;
@@ -74,69 +28,7 @@
 		};
 	};
 
-	fragment@4 {
-		target = <&rk628>;
-		__dormant__ {
-			i2s-enable-default;
-		};
-	};
-
-	fragment@5 {
-		target = <&i2s_clk_consumer>;
-		__dormant__ {
-			status = "okay";
-		};
-	};
-
-	fragment@6 {
-		target-path = "/";
-		__dormant__ {
-			rk628_audio: rk628-audio-codec {
-				compatible = "linux,spdif-dir";
-				#sound-dai-cells = <0>;
-				status = "okay";
-			};
-		};
-	};
-
-	fragment@7 {
-		target = <&sound>;
-		__dormant__ {
-			compatible = "simple-audio-card";
-			status = "okay";
-			simple-audio-card,name = "RK628HDMI";
-			simple-audio-card,format = "i2s";
-			simple-audio-card,bitclock-master = <&rk628_audio_master>;
-			simple-audio-card,frame-master = <&rk628_audio_master>;
-
-			simple-audio-card,cpu {
-				sound-dai = <&i2s_clk_consumer>;
-				dai-tdm-slot-num = <2>;
-				dai-tdm-slot-width = <32>;
-			};
-
-			rk628_audio_master: simple-audio-card,codec {
-				sound-dai = <&rk628_audio>;
-			};
-		};
-	};
-
-	fragment@8 {
-		target = <&rk628_out>;
-		__dormant__ {
-			data-lanes = <1 2>;
-		};
-	};
-
-	fragment@9 {
-		target = <&csi_in>;
-		__dormant__ {
-			data-lanes = <1 2>;
-		};
-	};
-
 	__overrides__ {
-		audio = <0>, "+4+5+6+7";
 		cam0 = <&i2c_frag>, "target:0=", <&i2c_csi_dsi0>,
 		       <&csi_frag>, "target:0=", <&csi0>,
 		       <&power_frag>, "target:0=", <&cam0_reg>,
@@ -145,7 +37,27 @@
 		       <&csi_frag>, "target:0=", <&csi1>,
 		       <&power_frag>, "target:0=", <&cam1_reg>,
 		       <&rk628>, "vdd-supply:0=", <&cam1_reg>;
-		2lane = <0>, "+8+9";
-		4lane = <0>, "-8-9";
 	};
+};
+
+&i2c_frag {
+	target = <&i2c_csi_dsi0>;
+};
+
+&csi_frag {
+	target = <&csi0>;
+};
+
+&rk628 {
+	vdd-supply = <&cam0_reg>;
+	interrupt-parent = <&rp1_gpio>;
+	plugin-det-gpios = <&rp1_gpio 24 1>; // GPIO24, active low
+};
+
+&rk628_out {
+	data-lanes = <1 2 3 4>;
+};
+
+&csi_in {
+	data-lanes = <1 2 3 4>;
 };

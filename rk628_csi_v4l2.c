@@ -340,6 +340,15 @@ static const struct rk628_csi_mode supported_modes[] = {
 		.hts_def = 4400,
 		.vts_def = 2250,
 	}, {
+		.width = 2560,
+		.height = 1440,
+		.max_fps = {
+			.numerator = 10000,
+			.denominator = 300000,
+		},
+		.hts_def = 3328,
+		.vts_def = 1468,
+	}, {
 		.width = 1920,
 		.height = 1080,
 		.max_fps = {

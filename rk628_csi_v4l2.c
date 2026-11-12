@@ -3271,11 +3271,11 @@ static int rk628_csi_power_on(struct rk628_csi *csi)
 		usleep_range(10000, 11000);
 	}
 	if (csi->reset_gpio) {
-		gpiod_set_value(csi->reset_gpio, 0);
+		gpiod_set_value_cansleep(csi->reset_gpio, 0);
 		usleep_range(10000, 11000);
-		gpiod_set_value(csi->reset_gpio, 1);
+		gpiod_set_value_cansleep(csi->reset_gpio, 1);
 		usleep_range(10000, 11000);
-		gpiod_set_value(csi->reset_gpio, 0);
+		gpiod_set_value_cansleep(csi->reset_gpio, 0);
 		usleep_range(10000, 11000);
 	}
 
@@ -3296,11 +3296,11 @@ static int rk628_csi_power_off(struct rk628_csi *csi)
 		usleep_range(10000, 11000);
 	}
 	if (csi->reset_gpio) {
-		gpiod_set_value(csi->reset_gpio, 1);
+		gpiod_set_value_cansleep(csi->reset_gpio, 1);
 		usleep_range(10000, 11000);
-		gpiod_set_value(csi->reset_gpio, 0);
+		gpiod_set_value_cansleep(csi->reset_gpio, 0);
 		usleep_range(10000, 11000);
-		gpiod_set_value(csi->reset_gpio, 1);
+		gpiod_set_value_cansleep(csi->reset_gpio, 1);
 		usleep_range(10000, 11000);
 	}
 

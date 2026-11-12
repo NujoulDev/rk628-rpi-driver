@@ -8,7 +8,7 @@ export LC_ALL=C
 die() { echo "Error: $*" >&2; exit 1; }
 
 if [ "${1:-}" = --help ] || [ "${1:-}" = -h ]; then
-  echo "Usage: sudo sh media.sh"
+  echo "Usage: sudo sh media-pi5.sh"
   echo "Wait for HDMI and configure Pi 5 capture"
   echo "Stop capture applications first"
   exit 0
@@ -22,7 +22,7 @@ done
 mountpoint -q /sys/kernel/debug || die "debugfs not mounted at /sys/kernel/debug"
 
 exec 9>/run/lock/rk628-media.lock
-flock -n 9 || die "media.sh is already running"
+flock -n 9 || die "media-pi5.sh is already running"
 
 find_entity() {
   printf '%s\n' "$TOPOLOGY" | awk -v kind="$1" '

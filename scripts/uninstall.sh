@@ -17,13 +17,14 @@ parse_options "$@"
 [ "$(id -u)" -eq 0 ] || die "Run with sudo"
 
 if [ "$COMPONENT" = service ] || [ "$COMPONENT" = all ]; then
+  select_media_service
   command -v systemctl >/dev/null 2>&1 || die "Missing command: systemctl"
-  SERVICE_FILE=/etc/systemd/system/rk628-media-init.service
+  SERVICE_FILE=/etc/systemd/system/$SERVICE_NAME
   if [ -e "$SERVICE_FILE" ] || [ -L "$SERVICE_FILE" ]; then
-    print REMOVE rk628-media-init.service
-    systemctl disable --now rk628-media-init.service
+    print REMOVE "$SERVICE_NAME"
+    systemctl disable --now "$SERVICE_NAME"
   fi
-  rm -f "$SERVICE_FILE" /usr/local/libexec/rk628/media.sh
+  rm -f "$SERVICE_FILE" "/usr/local/libexec/rk628/$MEDIA_SCRIPT"
   systemctl daemon-reload
   if [ "$COMPONENT" = service ]; then
     printf '\nService removed\n'

@@ -44,6 +44,11 @@ read_package_name() {
   : "${PACKAGE_NAME:?Missing PACKAGE_NAME}"
 }
 
+select_media_service() {
+  MEDIA_SCRIPT=media-$PLATFORM.sh
+  SERVICE_NAME=rk628-media-init-$PLATFORM.service
+}
+
 find_versions() {
   STATUS=$(dkms status -m "$PACKAGE_NAME")
   VERSIONS=$(printf '%s\n' "$STATUS" |

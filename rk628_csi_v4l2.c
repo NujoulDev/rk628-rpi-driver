@@ -2013,7 +2013,7 @@ static irqreturn_t rk628_csi_irq_handler(int irq, void *dev_id)
 
 static void rk628_csi_irq_poll_timer(struct timer_list *t)
 {
-	struct rk628_csi *csi = timer_container_of(csi, t, timer);
+	struct rk628_csi *csi = container_of(t, struct rk628_csi, timer);
 
 	schedule_work(&csi->work_i2c_poll);
 	mod_timer(&csi->timer, jiffies + msecs_to_jiffies(POLL_INTERVAL_MS));

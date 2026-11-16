@@ -51,8 +51,6 @@ media-ctl -d "$MEDIA" -p
 # 查询 HDMI 输入时序，/dev/v4l-subdev2使用前面查询到的 rk628 视频输出节点
 v4l2-ctl -d /dev/v4l-subdev2 --query-dv-timings
 # 根据 HDMI 输入时序设置视频分辨率
-
-
 media-ctl -d "$MEDIA" \
   -l '"csi2":4 -> "rp1-cfe-csi2_ch0":0 [1]'
 
@@ -204,7 +202,7 @@ sudo reboot
 手动配置视频分辨率和格式：
 
 配置好 Systemd service 的用户可以跳过该步骤
-但是后续 HDMI 输入时序发生变化时仍然需要手动或者自己的程序进行配置，一定要根据 `--query-dv-timings` 的结果来设置视频分辨率，否则可能无法采集到视频，具体参考上文的 `v4l2-ctl` 和 `media-ctl` 命令。
+但是后续 HDMI 输入时序发生变化时仍然需要手动或者自己的程序进行配置，一定要根据 `--query-dv-timings` 的结果来设置视频分辨率，否则可能无法采集到视频，具体参考[systemd-service-介绍](#systemd-service-介绍)章节。
 
 ## 验证
 

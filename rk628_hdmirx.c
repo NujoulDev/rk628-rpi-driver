@@ -705,10 +705,17 @@ static void rk628_hdmirx_audio_shutdown(struct device *dev, void *data)
 }
 
 static int rk628_hdmirx_audio_get_dai_id(struct snd_soc_component *comment,
-				   struct device_node *endpoint, void *data)
+				   struct device_node *endpoint)
 {
 	dev_dbg(comment->dev, "%s\n", __func__);
 	return 0;
+}
+
+static int __maybe_unused
+rk628_hdmirx_audio_get_dai_id_with_data(struct snd_soc_component *comment,
+				     struct device_node *endpoint, void *data)
+{
+	return rk628_hdmirx_audio_get_dai_id(comment, endpoint);
 }
 
 void rk628_hdmirx_audio_handle_plugged_change(HAUDINFO info, bool plugged)
@@ -742,7 +749,10 @@ static const struct hdmi_codec_ops rk628_hdmirx_audio_codec_ops = {
 	.hw_params = rk628_hdmirx_audio_hw_params,
 	.audio_startup = rk628_hdmirx_audio_startup,
 	.audio_shutdown = rk628_hdmirx_audio_shutdown,
-	.get_dai_id = rk628_hdmirx_audio_get_dai_id,
+	.get_dai_id = _Generic(((struct hdmi_codec_ops *)0)->get_dai_id,
+		int (*)(struct snd_soc_component *, struct device_node *, void *):
+			rk628_hdmirx_audio_get_dai_id_with_data,
+		default: rk628_hdmirx_audio_get_dai_id),
 	.hook_plugged_cb = rk628_hdmirx_audio_hook_plugged_cb
 };
 

@@ -14,7 +14,7 @@
 				status = "okay";
 				pinctrl-names = "default";
 				pinctrl-0 = <&rk628_irq_pins>;
-				interrupts = <23 4>; // GPIO23, level high, J8205 pin6
+				interrupts = <17 4>; // GPIO17, level high, J8205 pin6
 				continues-clk;
 				rockchip,camera-module-index = <0>;
 				rockchip,camera-module-facing = "back";

@@ -20,7 +20,7 @@
 		target = <&rp1_gpio>;
 		__overlay__ {
 			rk628_irq_pins: rk628-irq-pins {
-				pins = "gpio23", "gpio24";
+				pins = "gpio17", "gpio25";
 				function = "gpio";
 				input-enable;
 				bias-disable;
@@ -51,7 +51,7 @@
 &rk628 {
 	vdd-supply = <&cam0_reg>;
 	interrupt-parent = <&rp1_gpio>;
-	plugin-det-gpios = <&rp1_gpio 24 1>; // GPIO24, active low
+	plugin-det-gpios = <&rp1_gpio 25 1>; // GPIO25, active low
 };
 
 &rk628_out {

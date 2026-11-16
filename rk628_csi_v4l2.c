@@ -95,6 +95,7 @@ struct rk628_csi {
 	struct delayed_work delayed_work_res_change;
 	struct timer_list timer;
 	struct work_struct work_i2c_poll;
+	struct mutex edid_mutex;
 	struct mutex confctl_mutex;
 	struct rkmodule_multi_dev_info multi_dev_info;
 	const struct rk628_csi_mode *cur_mode;
@@ -103,6 +104,10 @@ struct rk628_csi {
 	const char *len_name;
 	u32 module_index;
 	u8 edid_blocks_written;
+	u8 edid[EDID_NUM_BLOCKS_MAX * EDID_BLOCK_SIZE];
+	u8 edid_blocks;
+	bool edid_initialized;
+	unsigned long edid_hpd_ready;
 	u64 lane_mbps;
 	u8 csi_lanes_in_use;
 	u32 mbus_fmt_code;
@@ -412,6 +417,8 @@ static int rk628_csi_s_dv_timings(struct v4l2_subdev *sd,
 				 struct v4l2_dv_timings *timings);
 static int rk628_csi_s_edid(struct v4l2_subdev *sd,
 				struct v4l2_subdev_edid *edid);
+static int rk628_csi_write_edid(struct rk628_csi *csi, const u8 *data,
+				unsigned int blocks);
 static int mipi_dphy_power_on(struct rk628_csi *csi);
 static void mipi_dphy_power_off(struct rk628_csi *csi);
 static int rk628_hdmirx_inno_phy_power_on(struct v4l2_subdev *sd);
@@ -611,6 +618,7 @@ static void rk628_csi_delayed_work_enable_hotplug(struct work_struct *work)
 	struct rk628_csi *csi = container_of(dwork, struct rk628_csi,
 			delayed_work_enable_hotplug);
 	struct v4l2_subdev *sd = &csi->sd;
+	unsigned long now;
 	bool plugin;
 
 	mutex_lock(&csi->confctl_mutex);
@@ -619,6 +627,17 @@ static void rk628_csi_delayed_work_enable_hotplug(struct work_struct *work)
 	plugin = tx_5v_power_present(sd);
 	v4l2_ctrl_s_ctrl(csi->detect_tx_5v_ctrl, plugin);
 	v4l2_dbg(1, debug, sd, "%s: 5v_det:%d\n", __func__, plugin);
+	if (!csi->edid_blocks_written) {
+		extcon_set_state_sync(csi->extcon, EXTCON_JACK_VIDEO_IN, plugin);
+		rk628_hdmirx_hpd_ctrl(sd, false);
+		goto unlock;
+	}
+	now = jiffies;
+	if (time_before(now, csi->edid_hpd_ready)) {
+		mod_delayed_work(system_wq, &csi->delayed_work_enable_hotplug,
+				 csi->edid_hpd_ready - now);
+		goto unlock;
+	}
 	if (plugin) {
 		extcon_set_state_sync(csi->extcon, EXTCON_JACK_VIDEO_IN, true);
 		rk628_csi_enable_interrupts(sd, false);
@@ -633,6 +652,7 @@ static void rk628_csi_delayed_work_enable_hotplug(struct work_struct *work)
 		extcon_set_state_sync(csi->extcon, EXTCON_JACK_VIDEO_IN, false);
 		rk628_hdmirx_plugout(sd);
 	}
+unlock:
 	mutex_unlock(&csi->confctl_mutex);
 }
 
@@ -679,7 +699,8 @@ static void rk628_delayed_work_res_change(struct work_struct *work)
 	csi->avi_rcv_rdy = false;
 	plugin = tx_5v_power_present(sd);
 	v4l2_dbg(1, debug, sd, "%s: 5v_det:%d\n", __func__, plugin);
-	if (plugin) {
+	if (plugin && csi->edid_blocks_written &&
+	    time_after_eq(jiffies, csi->edid_hpd_ready)) {
 		if (rk628_check_resulotion_change(sd)) {
 			v4l2_dbg(1, debug, sd, "res change, recfg ctrler and phy!\n");
 			if (csi->rk628->version >= RK628F_VERSION) {
@@ -1498,10 +1519,9 @@ static int rk628_hdmirx_phy_setup(struct v4l2_subdev *sd)
 	return LOCK_OK;
 }
 
-static void rk628_csi_initial(struct v4l2_subdev *sd)
+static int rk628_csi_initial(struct v4l2_subdev *sd)
 {
 	struct rk628_csi *csi = to_csi(sd);
-	struct v4l2_subdev_edid def_edid;
 	u32 mask = SW_OUTPUT_MODE_MASK;
 	u32 val = SW_OUTPUT_MODE(OUTPUT_MODE_CSI);
 
@@ -1552,33 +1572,38 @@ static void rk628_csi_initial(struct v4l2_subdev *sd)
 			SW_VSYNC_POL(1) |
 			SW_I2S_DATA_OEN(0));
 
-	def_edid.pad = 0;
-	def_edid.start_block = 0;
-	def_edid.blocks = 2;
-	if (csi->rk628->version >= RK628F_VERSION && csi->dual_mipi_use) {
-		def_edid.edid = rk628f_edid_init_data;
-		csi->edid_version = 2;
-	} else {
-		def_edid.edid = edid_init_data;
+	if (!csi->edid_initialized) {
+		const u8 *data = edid_init_data;
+
 		csi->edid_version = 1;
+		if (csi->rk628->version >= RK628F_VERSION && csi->dual_mipi_use) {
+			data = rk628f_edid_init_data;
+			csi->edid_version = 2;
+		}
+		if (csi->rk628->hdr_support && csi->rk628->version >= RK628F_VERSION) {
+			data = rk628f_hdr_edid_init_data;
+			csi->edid_version = 3;
+		}
+		return rk628_csi_write_edid(csi, data, EDID_NUM_BLOCKS_MAX);
 	}
-	if (csi->rk628->hdr_support && csi->rk628->version >= RK628F_VERSION) {
-		def_edid.edid = rk628f_hdr_edid_init_data;
-		csi->edid_version = 3;
-	}
-	rk628_csi_s_edid(sd, &def_edid);
+
+	return rk628_csi_write_edid(csi, csi->edid, csi->edid_blocks);
 }
 
-static void rk628_csi_initial_setup(struct v4l2_subdev *sd)
+static int rk628_csi_initial_setup(struct v4l2_subdev *sd)
 {
 	struct rk628_csi *csi = to_csi(sd);
+	int ret;
 
-	rk628_csi_initial(sd);
+	ret = rk628_csi_initial(sd);
+	if (ret)
+		return ret;
 
 	csi->rk628->dphy_lane_en = 0x1f;
 	csi->txphy_pwron = true;
 	if (tx_5v_power_present(sd))
 		schedule_delayed_work(&csi->delayed_work_enable_hotplug, msecs_to_jiffies(4000));
+	return 0;
 }
 
 static int rk628_csi_format_change(struct v4l2_subdev *sd)
@@ -2412,26 +2437,37 @@ static int rk628_csi_g_edid(struct v4l2_subdev *sd,
 {
 	struct rk628_csi *csi = to_csi(sd);
 	u32 i, val;
+	int ret = 0;
 
 	memset(edid->reserved, 0, sizeof(edid->reserved));
 
 	if (edid->pad != 0)
 		return -EINVAL;
 
+	mutex_lock(&csi->edid_mutex);
 	if (edid->start_block == 0 && edid->blocks == 0) {
 		edid->blocks = csi->edid_blocks_written;
-		return 0;
+		goto unlock;
 	}
 
-	if (csi->edid_blocks_written == 0)
-		return -ENODATA;
+	if (csi->edid_blocks_written == 0) {
+		ret = -ENODATA;
+		goto unlock;
+	}
 
 	if (edid->start_block >= csi->edid_blocks_written ||
-			edid->blocks == 0)
-		return -EINVAL;
+	    edid->blocks == 0) {
+		ret = -EINVAL;
+		goto unlock;
+	}
 
 	if (edid->start_block + edid->blocks > csi->edid_blocks_written)
 		edid->blocks = csi->edid_blocks_written - edid->start_block;
+
+	if (csi->rk628->is_suspend) {
+		ret = -EBUSY;
+		goto unlock;
+	}
 
 	/* edid access by apb when read, i2c slave addr: 0x0 */
 	rk628_i2c_update_bits(csi->rk628, GRF_SYSTEM_CON0,
@@ -2450,91 +2486,139 @@ static int rk628_csi_g_edid(struct v4l2_subdev *sd,
 			SW_EDID_MODE_MASK,
 			SW_EDID_MODE(0));
 
+unlock:
+	mutex_unlock(&csi->edid_mutex);
+	return ret;
+}
+
+static int rk628_csi_write_edid(struct rk628_csi *csi, const u8 *data,
+				unsigned int blocks)
+{
+	struct v4l2_subdev *sd = &csi->sd;
+	unsigned int edid_len = blocks * EDID_BLOCK_SIZE;
+	u32 i, val;
+	int ret, mode_ret;
+
+	csi->edid_blocks_written = 0;
+	rk628_hdmirx_controller_reset(csi->rk628);
+	rk628_hdmirx_hpd_ctrl(sd, false);
+
+	if (blocks) {
+		/* edid access by apb when write, i2c slave addr: 0x0 */
+		ret = rk628_i2c_update_bits(csi->rk628, GRF_SYSTEM_CON0,
+				SW_ADAPTER_I2CSLADR_MASK | SW_EDID_MODE_MASK,
+				SW_ADAPTER_I2CSLADR(0) | SW_EDID_MODE(1));
+		if (ret)
+			return ret;
+
+		for (i = 0; i < edid_len; i++) {
+			ret = rk628_i2c_write(csi->rk628, EDID_BASE + i * 4, data[i]);
+			if (ret)
+				break;
+		}
+
+		/* read out for debug */
+		if (!ret && debug >= 3) {
+			pr_info("%s: Read EDID: ======\n", __func__);
+			for (i = 0; i < edid_len; i++) {
+				rk628_i2c_read(csi->rk628, EDID_BASE + i * 4, &val);
+				pr_info("0x%02x ", val);
+				if ((i + 1) % 8 == 0)
+					pr_info("\n");
+			}
+			pr_info("%s: ======\n", __func__);
+		}
+
+		// Return access to the HDMI receiver even if a write failed.
+		mode_ret = rk628_i2c_update_bits(csi->rk628, GRF_SYSTEM_CON0,
+				SW_ADAPTER_I2CSLADR_MASK | SW_EDID_MODE_MASK,
+				SW_ADAPTER_I2CSLADR(0) | SW_EDID_MODE(0));
+		if (ret)
+			return ret;
+		if (mode_ret)
+			return mode_ret;
+	}
+	udelay(100);
+
+	// data may point at this cache during resume.
+	if (edid_len)
+		memmove(csi->edid, data, edid_len);
+	memset(csi->edid + edid_len, 0, sizeof(csi->edid) - edid_len);
+	csi->edid_blocks = blocks;
+	csi->edid_initialized = true;
+	csi->edid_blocks_written = blocks;
+	csi->edid_hpd_ready = jiffies + msecs_to_jiffies(1000);
+
 	return 0;
 }
 
-static int rk628_csi_s_edid(struct v4l2_subdev *sd,
-				struct v4l2_subdev_edid *edid)
+static int rk628_csi_set_edid(struct v4l2_subdev *sd,
+			     struct v4l2_subdev_edid *edid, u8 version)
 {
 	struct rk628_csi *csi = to_csi(sd);
-	u16 edid_len = edid->blocks * EDID_BLOCK_SIZE;
-	u32 i, val;
+	int ret;
 
 	v4l2_dbg(1, debug, sd, "%s, pad %d, start block %d, blocks %d\n",
 		 __func__, edid->pad, edid->start_block, edid->blocks);
-
 	memset(edid->reserved, 0, sizeof(edid->reserved));
 
-	if (edid->pad != 0)
+	if (edid->pad != 0 || edid->start_block != 0)
 		return -EINVAL;
-
-	if (edid->start_block != 0)
-		return -EINVAL;
-
 	if (edid->blocks > EDID_NUM_BLOCKS_MAX) {
 		edid->blocks = EDID_NUM_BLOCKS_MAX;
 		return -E2BIG;
 	}
 
-	rk628_hdmirx_controller_reset(csi->rk628);
-	rk628_hdmirx_hpd_ctrl(sd, false);
-
-	if (edid->blocks == 0) {
-		csi->edid_blocks_written = 0;
-		return 0;
+	mutex_lock(&csi->edid_mutex);
+	if (csi->rk628->is_suspend || !csi->edid_initialized) {
+		ret = -EBUSY;
+		goto unlock;
 	}
 
-	/* edid access by apb when write, i2c slave addr: 0x0 */
-	rk628_i2c_update_bits(csi->rk628, GRF_SYSTEM_CON0,
-			SW_ADAPTER_I2CSLADR_MASK |
-			SW_EDID_MODE_MASK,
-			SW_ADAPTER_I2CSLADR(0) |
-			SW_EDID_MODE(1));
+	// These workers may take confctl_mutex: drain them before locking it.
+	cancel_delayed_work_sync(&csi->delayed_work_enable_hotplug);
+	cancel_delayed_work_sync(&csi->delayed_work_res_change);
+	rk628_hdmirx_audio_cancel_work_audio(csi->audio_info, true);
+	if (csi->rk628->version < RK628F_VERSION)
+		rk628_hdmirx_audio_cancel_work_rate_change(csi->audio_info, true);
 
-	for (i = 0; i < edid_len; i++)
-		rk628_i2c_write(csi->rk628, EDID_BASE + i * 4, edid->edid[i]);
-
-	/* read out for debug */
-	if (debug >= 3) {
-		pr_info("%s: Read EDID: ======\n", __func__);
-		for (i = 0; i < edid_len; i++) {
-			rk628_i2c_read(csi->rk628, EDID_BASE + i * 4, &val);
-			pr_info("0x%02x ", val);
-			if ((i + 1) % 8 == 0)
-				pr_info("\n");
-		}
-		pr_info("%s: ======\n", __func__);
+	mutex_lock(&csi->confctl_mutex);
+	rk628_csi_enable_interrupts(sd, false);
+	enable_stream(sd, false);
+	csi->nosignal = true;
+	csi->avi_rcv_rdy = false;
+	ret = rk628_csi_write_edid(csi, edid->edid, edid->blocks);
+	if (!ret) {
+		// Version 0 denotes a user-supplied or cleared EDID.
+		csi->edid_version = edid->blocks ? version : 0;
+		if (edid->blocks && tx_5v_power_present(sd))
+			mod_delayed_work(system_wq,
+					 &csi->delayed_work_enable_hotplug,
+					 msecs_to_jiffies(1000));
 	}
+	mutex_unlock(&csi->confctl_mutex);
+unlock:
+	mutex_unlock(&csi->edid_mutex);
+	return ret;
+}
 
-	/* edid access by RX's i2c, i2c slave addr: 0x0 */
-	rk628_i2c_update_bits(csi->rk628, GRF_SYSTEM_CON0,
-			SW_ADAPTER_I2CSLADR_MASK |
-			SW_EDID_MODE_MASK,
-			SW_ADAPTER_I2CSLADR(0) |
-			SW_EDID_MODE(0));
-	csi->edid_blocks_written = edid->blocks;
-	udelay(100);
-
-	if (tx_5v_power_present(sd) && csi->rk628->version < RK628F_VERSION)
-		rk628_hdmirx_hpd_ctrl(sd, true);
-
-	return 0;
+static int rk628_csi_s_edid(struct v4l2_subdev *sd,
+				struct v4l2_subdev_edid *edid)
+{
+	return rk628_csi_set_edid(sd, edid, 0);
 }
 
 static void rk628_reset_edid(struct v4l2_subdev *sd, u8 *edid_data, u8 edid_version)
 {
-	struct rk628_csi *csi = to_csi(sd);
-	struct v4l2_subdev_edid def_edid;
+	struct v4l2_subdev_edid edid = {
+		.blocks = EDID_NUM_BLOCKS_MAX,
+		.edid = edid_data,
+	};
+	int ret;
 
-	rk628_hdmirx_plugout(&csi->sd);
-	def_edid.pad = 0;
-	def_edid.start_block = 0;
-	def_edid.blocks = 2;
-	def_edid.edid = edid_data;
-	csi->edid_version = edid_version;
-	rk628_csi_s_edid(sd, &def_edid);
-	schedule_delayed_work(&csi->delayed_work_enable_hotplug,
-			      msecs_to_jiffies(1000));
+	ret = rk628_csi_set_edid(sd, &edid, edid_version);
+	if (ret)
+		v4l2_err(sd, "Failed to select EDID preset: %d\n", ret);
 }
 
 static int rk628_csi_g_frame_interval(struct v4l2_subdev *sd,
@@ -3339,20 +3423,26 @@ static int rk628_csi_resume(struct device *dev)
 
 	v4l2_info(sd, "%s: resume!\n", __func__);
 
+	mutex_lock(&csi->edid_mutex);
 	ret = rk628_csi_power_on(csi);
 	if (ret)
-		return ret;
+		goto unlock;
 	rk628_cru_initialize(csi->rk628);
 	rk628_clk_set_rate(csi->rk628, CGU_CLK_CPLL, CPLL_REF_CLK);
-	rk628_csi_initial(sd);
+	ret = rk628_csi_initial(sd);
+	if (ret)
+		goto unlock;
 	rk628_hdmirx_plugout(sd);
+	csi->rk628->is_suspend = false;
 	enable_irq(csi->plugin_irq);
 	enable_irq(csi->hdmirx_irq);
-	schedule_delayed_work(&csi->delayed_work_enable_hotplug,
-			     msecs_to_jiffies(500));
-	csi->rk628->is_suspend = false;
+	if (csi->edid_blocks_written)
+		schedule_delayed_work(&csi->delayed_work_enable_hotplug,
+				      msecs_to_jiffies(500));
 
-	return 0;
+unlock:
+	mutex_unlock(&csi->edid_mutex);
+	return ret;
 }
 
 static int rk628_csi_suspend(struct device *dev)
@@ -3363,6 +3453,7 @@ static int rk628_csi_suspend(struct device *dev)
 
 	v4l2_info(sd, "%s: suspend!\n", __func__);
 
+	mutex_lock(&csi->edid_mutex);
 	csi->rk628->is_suspend = true;
 	rk628_hdmirx_plugout(sd);
 	disable_irq(csi->plugin_irq);
@@ -3371,6 +3462,7 @@ static int rk628_csi_suspend(struct device *dev)
 	cancel_delayed_work_sync(&csi->delayed_work_enable_hotplug);
 	rk628_hdmirx_audio_cancel_work_audio(csi->audio_info, true);
 	rk628_csi_power_off(csi);
+	mutex_unlock(&csi->edid_mutex);
 
 	return 0;
 }
@@ -3794,6 +3886,7 @@ static int rk628_csi_probe(struct i2c_client *client)
 		v4l2_dbg(1, debug, sd, "CSITX1 VERSION: %#x\n", val);
 	}
 
+	mutex_init(&csi->edid_mutex);
 	mutex_init(&csi->confctl_mutex);
 
 	csi->txphy = rk628_txphy_register(rk628);
@@ -3896,6 +3989,8 @@ static int rk628_csi_probe(struct i2c_client *client)
 		goto err_hdl;
 	}
 
+	if (!csi->hdmirx_irq)
+		INIT_WORK(&csi->work_i2c_poll, rk628_csi_work_i2c_poll);
 	INIT_DELAYED_WORK(&csi->delayed_work_enable_hotplug,
 			rk628_csi_delayed_work_enable_hotplug);
 	INIT_DELAYED_WORK(&csi->delayed_work_res_change,
@@ -3910,7 +4005,13 @@ static int rk628_csi_probe(struct i2c_client *client)
 		v4l2_err(sd, "request audio info fail\n");
 		goto err_work_queues;
 	}
-	rk628_csi_initial_setup(sd);
+	mutex_lock(&csi->edid_mutex);
+	err = rk628_csi_initial_setup(sd);
+	mutex_unlock(&csi->edid_mutex);
+	if (err) {
+		v4l2_err(sd, "failed to initialize EDID: %d\n", err);
+		goto err_work_queues;
+	}
 
 	if (csi->hdmirx_irq) {
 		irq_flags = irqd_get_trigger_type(irq_get_irq_data(csi->hdmirx_irq));
@@ -3925,8 +4026,6 @@ static int rk628_csi_probe(struct i2c_client *client)
 		}
 	} else {
 		v4l2_dbg(1, debug, sd, "no irq, cfg poll!\n");
-		INIT_WORK(&csi->work_i2c_poll,
-			  rk628_csi_work_i2c_poll);
 		timer_setup(&csi->timer, rk628_csi_irq_poll_timer, 0);
 		csi->timer.expires = jiffies +
 				       msecs_to_jiffies(POLL_INTERVAL_MS);
@@ -3974,6 +4073,7 @@ err_work_queues:
 	cancel_delayed_work(&csi->delayed_work_res_change);
 	rk628_hdmirx_audio_destroy(csi->audio_info);
 err_hdl:
+	mutex_destroy(&csi->edid_mutex);
 	mutex_destroy(&csi->confctl_mutex);
 	media_entity_cleanup(&sd->entity);
 	v4l2_ctrl_handler_free(&csi->hdl);
@@ -4023,6 +4123,7 @@ static int rk628_csi_remove(struct i2c_client *client)
 	if (csi->classdev)
 		device_destroy(rk_hdmirx_class(), MKDEV(0, 0));
 
+	mutex_destroy(&csi->edid_mutex);
 	mutex_destroy(&csi->confctl_mutex);
 
 	rk628_csi_power_off(csi);

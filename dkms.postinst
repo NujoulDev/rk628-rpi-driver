@@ -6,7 +6,14 @@ set -e
 print() { printf '  %-7s %s\n' "$1" "$2"; }
 cd "$(dirname "$0")"
 
-OVERLAY_DIR=/boot/firmware/overlays
+if [ -d /boot/firmware/overlays ]; then
+  OVERLAY_DIR=/boot/firmware/overlays
+elif [ -d /boot/overlays ]; then
+  OVERLAY_DIR=/boot/overlays
+else
+  echo "Error: overlays directory not found" >&2
+  exit 1
+fi
 PLATFORM=$(grep '^RK628_PLATFORM=' dkms.conf | cut -d'"' -f2)
 case "$PLATFORM" in
   pi4|pi5) ;;

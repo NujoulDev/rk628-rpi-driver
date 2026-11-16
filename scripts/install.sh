@@ -82,4 +82,4 @@ if [ "$COMPONENT" = all ]; then
   install_service
 fi
 
-printf '\nDone. Check /boot/firmware/config.txt, then reboot.\n'
+printf '\nDone.\n'

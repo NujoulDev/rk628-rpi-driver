@@ -32,6 +32,15 @@ if [ "$COMPONENT" = service ] || [ "$COMPONENT" = all ]; then
   fi
 fi
 
+if [ -d /boot/firmware/overlays ]; then
+  OVERLAY_DIR=/boot/firmware/overlays
+elif [ -d /boot/overlays ]; then
+  OVERLAY_DIR=/boot/overlays
+else
+  echo "Error: overlays directory not found" >&2
+  exit 1
+fi
+
 command -v dkms >/dev/null 2>&1 || die "Missing command: dkms"
 
 read_package_name
@@ -48,7 +57,5 @@ for directory in /usr/src/"$PACKAGE_NAME"-*; do
   rm -rf -- "$directory"
 done
 
-print REMOVE "/boot/firmware/overlays/rk628-$PLATFORM.dtbo"
-rm -f "/boot/firmware/overlays/rk628-$PLATFORM.dtbo"
-
-printf '\nRemove dtoverlay=rk628-%s from /boot/firmware/config.txt, then reboot.\n' "$PLATFORM"
+print REMOVE "$OVERLAY_DIR/rk628-$PLATFORM.dtbo"
+rm -f "$OVERLAY_DIR/rk628-$PLATFORM.dtbo"

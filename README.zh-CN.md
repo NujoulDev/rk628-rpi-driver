@@ -108,7 +108,7 @@ ls "/lib/modules/$(uname -r)/build/Makefile"
 
 ### 驱动安装
 
-下拉源码
+拉取源码
 
 ```bash
 git clone https://github.com/Nujoul1/rk628-rpi-driver.git
@@ -298,7 +298,7 @@ v4l2-ctl -d /dev/rk628-video \
 echo $?
 ```
 
-正常完成时推出码为0，完成 300 帧采集，打印的帧率接近 HDMI 输入帧率，且没有 `VIDIOC_STREAMON` 错误或持续的 `dropped buffers` 提示。需要提前停止时按 `Ctrl+C`。
+正常完成时退出码为 0，完成 300 帧采集，打印的帧率接近 HDMI 输入帧率，且没有 `VIDIOC_STREAMON` 错误或持续的 `dropped buffers` 提示。需要提前停止时按 `Ctrl+C`。
 
 验证音频采集驱动
 

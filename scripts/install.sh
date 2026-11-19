@@ -8,13 +8,22 @@ PROJECT_DIR=$(cd "$(dirname "$0")/.." && pwd -P)
 
 usage() {
   echo "Usage: sudo sh scripts/install.sh -p pi4|pi5 [-c all|service]"
-  echo "Default: driver and DTBO"
-  echo "  -c service  Media service"
+  echo "Default: driver, DTBO and udev rules"
+  echo "  -c service  Media service and udev rules"
   echo "  -c all      All"
 }
 
 parse_options "$@"
 [ "$(id -u)" -eq 0 ] || die "Run with sudo"
+
+command -v udevadm >/dev/null 2>&1 || die "Missing command: udevadm"
+[ -f "$PROJECT_DIR/udev/99-rk628.rules" ] || die "Missing udev/99-rk628.rules"
+
+install_udev() {
+  print INSTALL "/etc/udev/rules.d/99-rk628.rules"
+  install -D -m 644 "$PROJECT_DIR/udev/99-rk628.rules" "/etc/udev/rules.d/99-rk628.rules"
+  reload_udev
+}
 
 install_service() {
   print INSTALL "/usr/local/libexec/rk628/$MEDIA_SCRIPT"
@@ -32,6 +41,7 @@ if [ "$COMPONENT" = service ] || [ "$COMPONENT" = all ]; then
   [ -f "$PROJECT_DIR/scripts/$SERVICE_NAME" ] || die "Missing service file"
 fi
 if [ "$COMPONENT" = service ]; then
+  install_udev
   install_service
   printf '\nService installed\n'
   exit 0
@@ -77,6 +87,8 @@ print DKMS "build for $KERNEL_RELEASE"
 dkms build -m "$PACKAGE_NAME" -v "$PACKAGE_VERSION" -k "$KERNEL_RELEASE"
 print DKMS "install for $KERNEL_RELEASE"
 dkms install -m "$PACKAGE_NAME" -v "$PACKAGE_VERSION" -k "$KERNEL_RELEASE" --force
+
+install_udev
 
 if [ "$COMPONENT" = all ]; then
   install_service

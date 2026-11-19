@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: GPL-2.0
+[Unit]
+Description=RK628 Pi 4 media initialization
+Requires=sys-kernel-debug.mount dev-rk628\x2dmedia.device dev-rk628\x2dvideo.device
+After=sys-kernel-debug.mount dev-rk628\x2dmedia.device dev-rk628\x2dvideo.device
+
+[Service]
+Type=simple
+ExecStart=/bin/sh /usr/local/libexec/rk628/media-initd-pi4.sh
+RemainAfterExit=yes
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

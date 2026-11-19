@@ -5,10 +5,14 @@ set -eu
 
 export LC_ALL=C
 
+MEDIA=/dev/rk628-media
+VIDEO=/dev/rk628-video
+RK_SUBDEV=/dev/rk628-subdev
+
 die() { echo "Error: $*" >&2; exit 1; }
 
 if [ "${1:-}" = --help ] || [ "${1:-}" = -h ]; then
-  echo "Usage: sudo sh media-pi5.sh"
+  echo "Usage: sudo sh media-initd-pi5.sh"
   echo "Wait for HDMI and configure Pi 5 capture"
   echo "Stop capture applications first"
   exit 0
@@ -22,7 +26,7 @@ done
 mountpoint -q /sys/kernel/debug || die "debugfs not mounted at /sys/kernel/debug"
 
 exec 9>/run/lock/rk628-media.lock
-flock -n 9 || die "media-pi5.sh is already running"
+flock -n 9 || die "media-initd-pi5.sh is already running"
 
 find_entity() {
   printf '%s\n' "$TOPOLOGY" | awk -v kind="$1" '
@@ -75,27 +79,17 @@ find_link() {
 }
 
 discover_devices() {
-  MEDIA=
-  for device in /dev/media*; do
-    [ -c "$device" ] || continue
-    topology=$(media-ctl -d "$device" -p 2>/dev/null) || continue
-    printf '%s\n' "$topology" | grep -q 'rk628-csi' || continue
-    [ -z "$MEDIA" ] || die "Multiple RK628 media devices found"
-    MEDIA=$device
-    TOPOLOGY=$topology
-  done
-  [ -n "$MEDIA" ] || return 1
+  [ -c "$MEDIA" ] && [ -c "$VIDEO" ] || return 1
+  [ -c "$RK_SUBDEV" ] || return 1
+  TOPOLOGY=$(media-ctl -d "$MEDIA" -p 2>/dev/null) || return 1
 
   RK_ENTITY=$(find_entity rk628)
   CSI_ENTITY=$(find_entity csi2)
   VIDEO_ENTITY=$(find_entity video)
   [ -n "$RK_ENTITY" ] && [ -n "$CSI_ENTITY" ] &&
     [ -n "$VIDEO_ENTITY" ] || return 1
-  RK_SUBDEV=$(media-ctl -d "$MEDIA" -e "$RK_ENTITY") || return 1
   CSI_SUBDEV=$(media-ctl -d "$MEDIA" -e "$CSI_ENTITY") || return 1
-  VIDEO=$(media-ctl -d "$MEDIA" -e "$VIDEO_ENTITY") || return 1
-  [ -c "$RK_SUBDEV" ] && [ -c "$CSI_SUBDEV" ] &&
-    [ -c "$VIDEO" ] || return 1
+  [ -c "$CSI_SUBDEV" ] || return 1
   pads=$(find_link "$RK_ENTITY" "$CSI_ENTITY") ||
     die "Expected one direct link from $RK_ENTITY to $CSI_ENTITY"
   RK_PAD=${pads%% *}

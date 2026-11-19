@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: GPL-2.0
+# One RK628 adapter; its overlay labels the selected CSI controller.
+# Match that controller so another CSI camera does not claim these aliases.
+ACTION=="remove", GOTO="rk628_end"
+
+SUBSYSTEM=="video4linux", KERNEL=="video[0-9]*", ATTR{name}=="unicam-image|rp1-cfe-csi2_ch0", \
+  ATTRS{of_node/label}=="rk628-capture", \
+  GROUP="video", MODE="0660", SYMLINK+="rk628-video", TAG+="systemd"
+SUBSYSTEM=="media", KERNEL=="media[0-9]*", ATTR{model}=="unicam|rp1-cfe", \
+  ATTRS{of_node/label}=="rk628-capture", \
+  GROUP="video", MODE="0660", SYMLINK+="rk628-media", TAG+="systemd"
+SUBSYSTEM=="video4linux", KERNEL=="v4l-subdev[0-9]*", DRIVERS=="rk628-csi-v4l2", ATTR{name}=="*rk628-csi *", \
+  GROUP="video", MODE="0660", SYMLINK+="rk628-subdev", TAG+="systemd"
+
+LABEL="rk628_end"

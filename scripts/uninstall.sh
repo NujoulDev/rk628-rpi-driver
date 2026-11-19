@@ -8,7 +8,7 @@ PROJECT_DIR=$(cd "$(dirname "$0")/.." && pwd -P)
 
 usage() {
   echo "Usage: sudo sh scripts/uninstall.sh -p pi4|pi5 [-c all|service]"
-  echo "Default: driver and DTBO"
+  echo "Default: driver, DTBO and udev rules"
   echo "  -c service  Media service"
   echo "  -c all      All"
 }
@@ -42,6 +42,7 @@ else
 fi
 
 command -v dkms >/dev/null 2>&1 || die "Missing command: dkms"
+command -v udevadm >/dev/null 2>&1 || die "Missing command: udevadm"
 
 read_package_name
 
@@ -59,3 +60,7 @@ done
 
 print REMOVE "$OVERLAY_DIR/rk628-$PLATFORM.dtbo"
 rm -f "$OVERLAY_DIR/rk628-$PLATFORM.dtbo"
+
+print REMOVE "/etc/udev/rules.d/99-rk628.rules"
+rm -f /etc/udev/rules.d/99-rk628.rules
+reload_udev

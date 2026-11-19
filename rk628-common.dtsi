@@ -35,6 +35,7 @@
 		target = <&csi1>;
 		__overlay__ {
 			status = "okay";
+			label = "rk628-capture";	// for udev rules
 			port {
 				csi_in: endpoint {
 					remote-endpoint = <&rk628_out>;

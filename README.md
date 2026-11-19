@@ -1,240 +1,269 @@
 # RK628 kernel driver for Raspberry Pi4/5
 
+**English** | [简体中文](README.zh-CN.md)
+
 [![Debian 13 (trixie)](https://img.shields.io/badge/Debian-13_%28trixie%29-blue?logo=debian)](https://www.debian.org/)
-[![Tested kernel 6.18](https://img.shields.io/badge/tested_kernel-6.18-blue?logo=raspberrypi)](https://github.com/raspberrypi/linux/tree/rpi-6.18.y)
+[![Tested kernel 6.18](https://img.shields.io/badge/tested_kernel-6.18-blue?logo=raspberrypi)](#tested-environments)
 
-该项目为 `瑞莎 4K HDMI IN 转 MIPI CSI-2 转接板` 在 Raspberry Pi4/5 上的驱动程序，支持音频、视频采集。
+This project provides a Raspberry Pi 4/5 driver for the `Radxa 4K HDMI IN to MIPI CSI-2 Adapter`, with support for audio and video capture.
 
-## 已测试环境
 
-| 平台 | 系统 | 架构 | 内核 |
+## Tested environments
+
+| Platform | OS | Architecture | Kernel |
 | --- | --- | --- | --- |
 | Raspberry Pi 4 | Debian GNU/Linux 13.7 (trixie) | `aarch64` | `6.18.60+rpt-rpi-v8` |
 | Raspberry Pi 5 | Debian GNU/Linux 13.7 (trixie) | `aarch64` | `6.18.50+rpt-rpi-2712` |
 
-驱动需使用与当前运行内核匹配的头文件构建。其他系统及内核版本尚未验证。
+The driver must be built against headers matching the running kernel. Other operating systems and kernel versions have not been tested.
 
-## 关键参数
-- 转接板提供 2-lane 和 4-lane 两种 MIPI CSI-2 接口，目前在 Pi5上仅支持 4-lane 接口，Pi4 上仅支持 2-lane 接口。
+## Specifications
 
-- 视频输入：HDMI输入最高支持 4K（3840×2160）30fps。
+- The adapter provides both 2-lane and 4-lane MIPI CSI-2 interfaces. Currently, only the 4-lane interface is supported on Pi 5, and only the 2-lane interface is supported on Pi 4.
 
-- 视频输出：4-lane 接口在 Pi5 上的最大分辨率为 4K（3840×2160）30fps，2-lane 接口在 Pi4 上的最大分辨率为 2K（2560×1440）30fps。
+- Video input: HDMI input supports up to 4K (3840×2160) at 30 fps.
 
-## Systemd service 介绍
-- 树莓派官方支持的摄像头通过 `libcamera` 和 `rpicam-apps` 进行 pipeline 的自动配置，本项目使用自己的 Systemd 服务来实现类似的功能，避免每次开机后都需要手动配置。
-- 服务启动后等待第一个稳定的 HDMI 信号，配置成功后退出。
-- 后续如果 HDMI 输入时序发生变化需要手动执行 `v4l2-ctl` 和 `media-ctl` 命令或者由用户自己的应用程序调用 `v4l2` 接口才能采集视频，参考指令如下：
+- Video output: the 4-lane interface supports up to 4K (3840×2160) at 30 fps on Pi 5; the 2-lane interface supports up to 2K (2560×1440) at 30 fps on Pi 4.
 
-Pi4 上的参考命令：
+## Hardware connections
 
-```bash
-# 查询 HDMI 输入时序
-v4l2-ctl -d /dev/video0 --query-dv-timings
-# 根据 HDMI 输入时序设置视频分辨率
-v4l2-ctl -d /dev/video0 \
-  --set-fmt-video=width=1920,height=1080,pixelformat=UYVY,field=none
-```
+### Required parts
 
-Pi5 上的参考命令：
-
-```bash
-MEDIA=
-for dev in /dev/media*; do
-  if media-ctl -d "$dev" -p 2>/dev/null | grep -q rk628-csi; then
-    MEDIA="$dev"
-    break
-  fi
-done
-# m00_b_rk628-csi 后的为 rk628 视频输出节点
-media-ctl -d "$MEDIA" -p
-# 查询 HDMI 输入时序，/dev/v4l-subdev2使用前面查询到的 rk628 视频输出节点
-v4l2-ctl -d /dev/v4l-subdev2 --query-dv-timings
-# 根据 HDMI 输入时序设置视频分辨率
-media-ctl -d "$MEDIA" \
-  -l '"csi2":4 -> "rp1-cfe-csi2_ch0":0 [1]'
-
-media-ctl -d "$MEDIA" \
-  -V '"csi2":0 [fmt:UYVY8_1X16/3840x2160 field:none]'
-
-media-ctl -d "$MEDIA" \
-  -V '"csi2":4 [fmt:UYVY8_1X16/3840x2160 field:none]'
-
-v4l2-ctl -d /dev/video0 \
-  --set-fmt-video=width=3840,height=2160,pixelformat=UYVY
-```
-
-## 硬件连接
-
-### 所需配件
-
-- 瑞莎 4K HDMI IN 转 MIPI CSI-2 转接板
-- Pi4 或 Pi5
-- 6根母对母杜邦线
-- Pi4 需要 `15P-to-15P 排线` 
-- Pi5 需要 `31P-to-31P 排线` 和 `22P-to-22P 排线`，以及 `22P-to-31P 转接板`
+- Radxa 4K HDMI IN to MIPI CSI-2 Adapter
+- Pi 4 or Pi 5
+- Six female-to-female jumper wires
+- Pi 4: a `15P-to-15P ribbon cable`
+- Pi 5: a `31P-to-31P ribbon cable`, a `22P-to-22P ribbon cable`, and a `22P-to-31P adapter`
 
 ### HDMI
 
-接入 HDMI 信号源，支持 4K（3840×2160）30fps。
+Connect an HDMI source. Input up to 4K (3840×2160) at 30 fps is supported.
 
 ### MIPI CSI
 
-使用 Pi4 时，使用 `15pin to 15pin` 排线将转接板的 MIPI CSI 2lane 接口连接到 Pi4 的 `CAMERA` 接口上。
+For Pi 4, use a `15pin to 15pin` ribbon cable to connect the adapter's 2-lane MIPI CSI interface to the Pi 4's `CAMERA` connector.
 
-使用 Pi5 时，使用 `31pin to 31pin` 排线将转接板的 MIPI CSI 4lane 接口连接 `22P-to-31P 转接板` 的31Pin接口 ，再使用 `22P-to-22P` 将 `22P-to-31P 转接板` 的22Pin接口连接到 Pi5 的 `CAM/DISP0` 或 `CAM/DISP1` 接口上。 
+For Pi 5, use a `31pin to 31pin` ribbon cable to connect the adapter's 4-lane MIPI CSI interface to the 31-pin connector on the `22P-to-31P adapter`. Then use a `22P-to-22P` ribbon cable to connect the adapter's 22-pin connector to the Pi 5's `CAM/DISP0` or `CAM/DISP1` connector.
 
 ### I2S
 
-| 转接板7pin排针 | Pi 4/5 接点 |
+| Adapter 7-pin header | Pi 4/5 connection |
 | :---: | :---: |
-| I2S D0 | GPIO20，物理脚 **38** |
-| I2S LRCK | GPIO19，物理脚 **35** |
-| I2S SCLK | GPIO18，物理脚 **12** |
-| GND | 树莓派上任意GND引脚 |
+| I2S D0 | GPIO20, physical pin **38** |
+| I2S LRCK | GPIO19, physical pin **35** |
+| I2S SCLK | GPIO18, physical pin **12** |
+| GND | Any GND pin on the Raspberry Pi |
 
-### DET、INT
+### DET, INT
 
-|  转接板7pin排针 | Pi 4/5 接点 |
+| Adapter 7-pin header | Pi 4/5 connection |
 | :---: | :---: |
-| DET | GPIO24，物理脚 **18** |
-| INT | GPIO23，物理脚 **16** |
+| DET | GPIO25, physical pin **22** |
+| INT | GPIO17, physical pin **11** |
 
-## 安装
+## About media-initd
 
-本项目可通过源码内置的安装脚本一键安装所有产物，其中包括编译后的驱动模块、设备树覆盖文件、dkms配置和 Systemd service 配置。其中 System service 可选。
+media-initd is an optional service for configuring video capture. It waits for the first stable HDMI signal, sets the resolution and format, configures the capture pipeline on Pi 5, and exits once configuration is complete.
 
-安装必要依赖
+After changing the HDMI source or resolution, or reconnecting HDMI, restart media-initd or configure capture manually; see [Video capture configuration](#video-capture-configuration). Applications that configure the capture pipeline themselves do not need media-initd.
+
+## Installation and configuration
+
+The following steps apply to standard Raspberry Pi OS. By default, the installation script installs the driver modules, device tree overlays, DKMS configuration, and udev rules. Install media-initd if needed.
+
+### Install dependencies
 
 ```bash
 sudo apt update
 sudo apt install -y \
+  git ca-certificates \
   build-essential dkms device-tree-compiler \
   "linux-headers-$(uname -r)" \
   v4l-utils alsa-utils
 ```
 
-检查当前内核版本，以及匹配的头文件构建目录是否存在
+Check the running kernel version and confirm that the build directory for the matching headers exists:
 
 ```bash
 uname -r
 ls "/lib/modules/$(uname -r)/build/Makefile"
 ```
 
-下拉源码
+### Install the driver
+
+Clone the source:
 
 ```bash
-git clone 
+git clone https://github.com/Nujoul1/rk628-rpi-driver.git
 cd rk628-rpi-driver
 ```
 
-脚本参数表：
+Script options:
 
-以下参数适用于 `scripts/install.sh` 和 `scripts/uninstall.sh`。
+The following options apply to both `scripts/install.sh` and `scripts/uninstall.sh`.
 
-| 参数 | 可选值 | 说明 |
+| Option | Values | Description |
 | --- | --- | --- |
-| `-p` | `pi4`、`pi5` | 必填，选择平台 |
-| `-c` | `service`、`all` | 可选，`service` 仅处理 Systemd service；`all` 处理全部；省略时仅处理驱动 |
-| `-h`、`--help` | 无 | 显示帮助 |
+| `-p` | `pi4`, `pi5` | Required; selects the platform |
+| `-c` | `service`, `all` | Optional. When omitted, handles the driver, DTBO, and udev rules. `all` also handles media-initd. `service` handles only media-initd; installation also installs its required udev rules, while uninstallation leaves the rules in place |
+| `-h`, `--help` | None | Show help |
 
-运行驱动安装脚本
+Install the driver and media-initd. Replace `pi5` with `pi4` for Pi 4:
 
 ```bash
 sudo ./scripts/install.sh -p pi5 -c all
 ```
 
-看到 “Done” 后，启用 Systemd service，没有安装 Systemd service 的用户可以跳过此步骤。
+Omit `-c all` if you do not need media-initd:
 
 ```bash
-# 根据平台选择 “pi4” 或 “pi5”
-sudo systemctl enable --now rk628-media-init-pi5.service
+sudo ./scripts/install.sh -p pi5
 ```
 
-## dtoverlay options
+Once `Done` appears, enable media-initd. Skip this step if you did not install media-initd.
 
-打开 `/boot/firmware/config.txt` 文件
-将默认的 `camera_auto_detect=1` 改为：
+```bash
+# Choose "pi4" or "pi5" for your platform
+sudo systemctl enable rk628-media-initd-pi5.service
+```
+
+### Overlay configuration
+
+Open `/boot/firmware/config.txt`.
+Change the default `camera_auto_detect=1` to:
 ```txt
 camera_auto_detect=0
 ```
 
-修改文件末尾的 `[all]` 节点：
+Edit the `[all]` section at the end of the file:
 
-Pi 4 使用 `rk628-pi4`，固定 2-lane：
+Pi 4 uses `rk628-pi4`, with a fixed 2-lane configuration:
 
-| 可选参数 | 默认状态 | 说明 |
+| Optional parameter | Default | Description |
 | --- | --- | --- |
-| `audio` | 关闭 | 启用 HDMI 音频的 I2S 输出和 ALSA 采集声卡 `RK628HDMI`，需连接 I2S 信号线。 |
+| `audio` | Disabled | Enable HDMI audio output over I2S and the `RK628HDMI` ALSA capture device. I2S wiring is required. |
 
 
-Pi 5 使用 `rk628-pi5`，固定 4-lane：
+Pi 5 uses `rk628-pi5`, with a fixed 4-lane configuration:
 
-| 可选参数 | 默认状态 | 说明 |
+| Optional parameter | Default | Description |
 | --- | --- | --- |
-| `audio` | 关闭 | 启用 HDMI 音频的 I2S 输出和 ALSA 采集声卡 `RK628HDMI`，需连接 I2S 信号线。 |
-| `cam0` | 默认选择 | 使用 CAM/DISP0，同时选择对应的 I2C、CSI 和供电控制。 |
-| `cam1` | 未选择 | 使用 CAM/DISP1，同时选择对应的 I2C、CSI 和供电控制。 |
+| `audio` | Disabled | Enable HDMI audio output over I2S and the `RK628HDMI` ALSA capture device. I2S wiring is required. |
+| `cam0` | Selected | Use CAM/DISP0 and select its corresponding I2C, CSI, and power controls. |
+| `cam1` | Not selected | Use CAM/DISP1 and select its corresponding I2C, CSI, and power controls. |
 
-`cam0`、`cam1` 二选一，省略时使用 CAM/DISP0。Pi 5 不提供 lane 数选择参数。
+Choose either `cam0` or `cam1`. If neither is specified, CAM/DISP0 is used.
 
-配置示例（只保留与平台和接线对应的一行）：
+Configuration examples (keep only the line matching your platform and wiring):
 
 ```txt
-# Pi 4：视频和音频
+# Pi 4: video and audio
 dtoverlay=rk628-pi4,audio
 
-# Pi 5 CAM/DISP0：视频和音频
+# Pi 5 CAM/DISP0: video and audio
 dtoverlay=rk628-pi5,audio
 
-# Pi 5 CAM/DISP1：视频和音频
+# Pi 5 CAM/DISP1: video and audio
 dtoverlay=rk628-pi5,cam1,audio
 ```
 
-仅采集视频时去掉 `,audio`。
+For video capture only, remove `,audio`.
 
-重启
+Reboot:
 
 ```bash
 sudo reboot
 ```
 
-手动配置视频分辨率和格式：
+### Video capture configuration
 
-配置好 Systemd service 的用户可以跳过该步骤
-但是后续 HDMI 输入时序发生变化时仍然需要手动或者自己的程序进行配置，一定要根据 `--query-dv-timings` 的结果来设置视频分辨率，否则可能无法采集到视频，具体参考[systemd-service-介绍](#systemd-service-介绍)章节。
+After rebooting, udev creates device aliases for RK628, so the following commands do not need to be changed when device numbers change:
 
-## 验证
+| Device path | Purpose |
+| --- | --- |
+| `/dev/rk628-video` | Video capture node |
+| `/dev/rk628-media` | Media device for viewing and configuring the capture pipeline |
+| `/dev/rk628-subdev` | RK628 subdevice, used to query HDMI input timings on Pi 5 |
 
-验证服务是否正常运行，未部署服务的用户可以跳过此步骤。
-
-```bash
-# 根据平台选择 “pi4” 或 “pi5”
-systemctl status rk628-media-init-pi5.service
-```
-正确启用会有以下类似输出：
+View the corresponding symbolic links:
 
 ```bash
-● rk628-media-init-pi4.service - RK628 Pi 4 media initialization
-     Loaded: loaded (/etc/systemd/system/rk628-media-init-pi4.service; enabled; preset: enabled)
-     Active: active (exited) since Thu 2026-11-12 17:34:49 CST; 22s ago
- Invocation: de04fe43c43f4113901ac69046fee0ab
-    Process: 1987 ExecStart=/bin/sh /usr/local/libexec/rk628/media-pi4.sh (code=exited, status=0/SUCCESS)
-   Main PID: 1987 (code=exited, status=0/SUCCESS)
-        CPU: 272ms
-
-Nov 12 17:34:49 pi4 systemd[1]: Started rk628-media-init-pi4.service - RK628 Pi 4 media initialization.
-Nov 12 17:34:49 pi4 sh[1987]: Waiting for RK628 and a stable HDMI signal
-Nov 12 17:34:52 pi4 sh[1987]: Ready: /dev/video0 1920x1080 UYVY  
+ls -l /dev/rk628-*
 ```
 
-验证视频采集驱动
+If you have configured [media-initd](#about-media-initd), you can skip manual configuration after the first boot. After changing the HDMI source or input resolution, or reconnecting HDMI, stop any running capture applications and restart media-initd to automatically configure capture for the current HDMI signal:
+
+```bash
+# Choose "pi4" or "pi5" for your platform
+sudo systemctl restart rk628-media-initd-pi5.service
+```
+
+You can also configure capture manually using the commands below. The video resolution must match the result of `--query-dv-timings`.
+
+Manually configure the video resolution and format:
+
+Example commands for Pi 4:
+
+```bash
+# Query HDMI input timings
+v4l2-ctl -d /dev/rk628-video --query-dv-timings
+# Set the video resolution to match the HDMI input timings
+v4l2-ctl -d /dev/rk628-video \
+  --set-fmt-video=width=1920,height=1080,pixelformat=UYVY,field=none
+```
+
+Example commands for Pi 5 (the example uses `csi2` input pad `0` and output pad `4`, which connects to `rp1-cfe-csi2_ch0`; use the actual pad numbers if your topology differs):
+
+```bash
+# View the capture pipeline
+media-ctl -d /dev/rk628-media -p
+# Query HDMI input timings
+v4l2-ctl -d /dev/rk628-subdev --query-dv-timings
+# Set the video resolution to match the HDMI input timings
+media-ctl -d /dev/rk628-media \
+  -l '"csi2":4 -> "rp1-cfe-csi2_ch0":0 [1]'
+
+media-ctl -d /dev/rk628-media \
+  -V '"csi2":0 [fmt:UYVY8_1X16/3840x2160 field:none]'
+
+media-ctl -d /dev/rk628-media \
+  -V '"csi2":4 [fmt:UYVY8_1X16/3840x2160 field:none]'
+
+v4l2-ctl -d /dev/rk628-video \
+  --set-fmt-video=width=3840,height=2160,pixelformat=UYVY
+```
+
+## Verification
+
+Check that media-initd is working. Skip this step if you have not installed media-initd.
+
+```bash
+# Choose "pi4" or "pi5" for your platform
+systemctl status rk628-media-initd-pi5.service
+```
+When enabled and configured successfully, the output should look similar to this:
+
+```bash
+● rk628-media-initd-pi5.service - RK628 Pi 5 media initialization
+     Loaded: loaded (/etc/systemd/system/rk628-media-initd-pi5.service; enabled; preset: enabled)
+     Active: active (exited) since Wed 2026-11-18 20:17:05 CST; 1min 15s ago
+ Invocation: 2c4a2f35c78644aaaa6a16d38b3e20eb
+    Process: 768 ExecStart=/bin/sh /usr/local/libexec/rk628/media-initd-pi5.sh (code=exited, status=0/SUCCESS)
+   Main PID: 768 (code=exited, status=0/SUCCESS)
+        CPU: 358ms
+
+Nov 18 20:17:05 pi5 systemd[1]: Started rk628-media-initd-pi5.service - RK628 Pi 5 media initialization.
+Nov 18 20:17:05 pi5 sh[768]: Waiting for RK628 and a stable HDMI signal
+Nov 18 20:17:14 pi5 sh[768]: Ready: /dev/rk628-video 1920x1080 UYVY
+```
+
+Check the video capture driver:
 
 ```bash
 sudo dmesg | grep -i rk628
 ```
 
-正确加载驱动会有以下类似输出：
+When the driver is loaded correctly, the output should look similar to this:
 
 ```bash
 RK628 I2C driver version: 00.01.00
@@ -243,24 +272,24 @@ rk628-csi-v4l2 found @ 0xa0 (rk3x-i2c)
 rk628_csi_format_change: New format: 1920x1080p60.00 (2200x1125)
 ```
 
-实际采集 300 帧到 `/dev/null`，查看帧率和丢帧提示，设备节点按实际情况替换。
+Capture 300 frames to `/dev/null` and check the frame rate and dropped-buffer messages.
 
 ```bash
-v4l2-ctl -d /dev/video0 --get-fmt-video
-v4l2-ctl -d /dev/video0 \
+v4l2-ctl -d /dev/rk628-video --get-fmt-video
+v4l2-ctl -d /dev/rk628-video \
   --stream-mmap=4 --stream-count=300 --stream-to=/dev/null
 echo $?
 ```
 
-正常完成时退出码为 `0`，打印的帧率应接近 HDMI 输入帧率，且没有持续的 `dropped buffers` 提示。需要提前停止时按 `Ctrl+C`。
+On successful completion, the exit code is 0 and 300 frames have been captured. The reported frame rate should be close to the HDMI input frame rate, with no `VIDIOC_STREAMON` errors or persistent `dropped buffers` messages. Press `Ctrl+C` to stop early.
 
-验证音频采集驱动
+Check the audio capture driver:
 
 ```bash
 arecord -l
 ```
 
-正确加载驱动会有以下类似输出：
+When the driver is loaded correctly, the output should look similar to this:
 
 ```bash
 **** List of CAPTURE Hardware Devices ****
@@ -269,7 +298,7 @@ card 3: RK628HDMI [RK628HDMI], device 0: bcm2835-i2s-dir-hifi dir-hifi-0 [bcm283
   Subdevice #0: subdevice #0
 ```
 
-测试音频采集
+Test audio capture:
 
 ```bash
 arecord -D hw:CARD=RK628HDMI,DEV=0 \
@@ -278,37 +307,37 @@ arecord -D hw:CARD=RK628HDMI,DEV=0 \
 echo $?
 ```
 
-正常完成时退出码为 0
+The exit code is 0 on successful completion.
 
-## 升级
+## Upgrade
 
-使用最新的代码，然后运行安装脚本并且重启即可。
+Use the latest source, reinstall the same components you selected during the initial installation, and reboot. The example below installs media-initd on Pi 5 as well. If you do not use media-initd, omit `-c all` and the `systemctl enable` command. The updated DTBO takes effect after rebooting.
 
 ```bash
-# 根据平台选择 “pi4” 或 “pi5”
+# Choose "pi4" or "pi5" for your platform
 sudo ./scripts/install.sh -p pi5 -c all
-sudo systemctl enable --now rk628-media-init-pi5.service
+sudo systemctl enable rk628-media-initd-pi5.service
 sudo reboot
 ```
 
-## 卸载
+## Uninstall
 
-运行卸载脚本
+Run the uninstall script:
 
 ```bash
-# 根据平台选择 “pi4” 或 “pi5”
+# Choose "pi4" or "pi5" for your platform
 sudo ./scripts/uninstall.sh -p pi5 -c all
 ```
 
-删除对 `/boot/firmware/config.txt` 的修改
+Undo the changes to `/boot/firmware/config.txt`:
 
 ```txt
 sudo vi /boot/firmware/config.txt
 ```
 
-把 `dtoverlay=rk628-pi5,audio` 删除掉，恢复 `camera_auto_detect=1`
+Remove the `dtoverlay=rk628-pi4` or `dtoverlay=rk628-pi5` line added during installation, including any parameters, and restore `camera_auto_detect` to its previous setting.
 
-重启
+Reboot:
 
 ```bash
 sudo reboot

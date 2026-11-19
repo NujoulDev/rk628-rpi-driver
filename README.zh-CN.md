@@ -26,13 +26,29 @@
 
 ## 硬件连接
 
-### 所需配件
+### 配件清单
 
-- 瑞莎 4K HDMI IN 转 MIPI CSI-2 转接板
-- Pi4 或 Pi5
-- 6根母对母杜邦线
-- Pi4 需要 `15P-to-15P 排线`
-- Pi5 需要 `31P-to-31P 排线` 和 `22P-to-22P 排线`，以及 `22P-to-31P 转接板`
+#### 通用配件
+
+| 配件 | 数量 |
+| --- | :---: |
+| 瑞莎 4K HDMI IN 转 MIPI CSI-2 转接板 | 1 |
+| Raspberry Pi 4 或 Raspberry Pi 5 | 1 |
+| 母对母杜邦线 | 6 根 |
+
+#### Pi4 配件
+
+| AC014 异面 FPC 排线 × 1 |
+| :---: |
+| <img src="docs/images/ac014-fpc.webp" alt="AC014 异面 FPC 排线" width="240"> |
+| 15P 1.0 mm 转 15P 1.0 mm |
+
+#### Pi5 配件
+
+| AC006 异面 FPC 排线 × 1 | 22P 转 22P 排线 × 1 | 22P-to-31P 转接板 × 1 |
+| :---: | :---: | :---: |
+| <img src="docs/images/ac006-fpc.webp" alt="AC006 异面 FPC 排线" width="240"> | <img src="docs/images/22p-fpc.png" alt="22P 转 22P 排线" width="240"> | <img src="docs/images/22p-to-31p-adapter.png" alt="22P-to-31P 转接板" width="120"> |
+| 31P 0.3 mm 转 31P 0.3 mm | 22P 转 22P | 22P 转 31P |
 
 ### HDMI
 

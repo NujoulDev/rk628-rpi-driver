@@ -27,13 +27,29 @@ The driver must be built against headers matching the running kernel. Other oper
 
 ## Hardware connections
 
-### Required parts
+### Parts list
 
-- Radxa 4K HDMI IN to MIPI CSI-2 Adapter
-- Pi 4 or Pi 5
-- Six female-to-female jumper wires
-- Pi 4: a `15P-to-15P ribbon cable`
-- Pi 5: a `31P-to-31P ribbon cable`, a `22P-to-22P ribbon cable`, and a `22P-to-31P adapter`
+#### Common parts
+
+| Part | Quantity |
+| --- | :---: |
+| Radxa 4K HDMI IN to MIPI CSI-2 Adapter | 1 |
+| Raspberry Pi 4 or Raspberry Pi 5 | 1 |
+| Female-to-female jumper wires | 6 |
+
+#### Pi 4 parts
+
+| AC014 opposite-side FPC cable × 1 |
+| :---: |
+| <img src="docs/images/ac014-fpc.webp" alt="AC014 opposite-side FPC cable" width="240"> |
+| 15P 1.0 mm to 15P 1.0 mm |
+
+#### Pi 5 parts
+
+| AC006 opposite-side FPC cable × 1 | 22P-to-22P ribbon cable × 1 | 22P-to-31P adapter × 1 |
+| :---: | :---: | :---: |
+| <img src="docs/images/ac006-fpc.webp" alt="AC006 opposite-side FPC cable" width="240"> | <img src="docs/images/22p-fpc.png" alt="22P-to-22P ribbon cable" width="240"> | <img src="docs/images/22p-to-31p-adapter.png" alt="22P-to-31P adapter" width="120"> |
+| 31P 0.3 mm to 31P 0.3 mm | 22P to 22P | 22P to 31P |
 
 ### HDMI
 

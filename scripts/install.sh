@@ -29,7 +29,7 @@ install_service() {
   print INSTALL "/usr/local/libexec/rk628/$MEDIA_SCRIPT"
   install -D -m 755 "$PROJECT_DIR/scripts/$MEDIA_SCRIPT" "/usr/local/libexec/rk628/$MEDIA_SCRIPT"
   print INSTALL "/etc/systemd/system/$SERVICE_NAME"
-  install -D -m 644 "$PROJECT_DIR/scripts/$SERVICE_NAME" \
+  install -D -m 644 "$PROJECT_DIR/systemd/$SERVICE_NAME" \
     "/etc/systemd/system/$SERVICE_NAME"
   systemctl daemon-reload
 }
@@ -38,7 +38,7 @@ if [ "$COMPONENT" = service ] || [ "$COMPONENT" = all ]; then
   select_media_service
   command -v systemctl >/dev/null 2>&1 || die "Missing command: systemctl"
   [ -f "$PROJECT_DIR/scripts/$MEDIA_SCRIPT" ] || die "Missing scripts/$MEDIA_SCRIPT"
-  [ -f "$PROJECT_DIR/scripts/$SERVICE_NAME" ] || die "Missing service file"
+  [ -f "$PROJECT_DIR/systemd/$SERVICE_NAME" ] || die "Missing service file"
 fi
 if [ "$COMPONENT" = service ]; then
   install_udev

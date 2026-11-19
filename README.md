@@ -65,6 +65,8 @@ For Pi 5, use a `31pin to 31pin` ribbon cable to connect the adapter's 4-lane MI
 
 media-initd is an optional service for configuring video capture. It waits for the first stable HDMI signal, sets the resolution and format, configures the capture pipeline on Pi 5, and exits once configuration is complete.
 
+For officially supported Raspberry Pi cameras, this configuration is handled by `libcamera` in userspace.
+
 After changing the HDMI source or resolution, or reconnecting HDMI, restart media-initd or configure capture manually; see [Video capture configuration](#video-capture-configuration). Applications that configure the capture pipeline themselves do not need media-initd.
 
 ## Installation and configuration

@@ -7,15 +7,12 @@
 
 This project provides a Raspberry Pi 4/5 driver for the `Radxa 4K HDMI IN to MIPI CSI-2 Adapter`, with support for audio and video capture.
 
-
 ## Tested environments
 
 | Platform | OS | Architecture | Kernel |
 | --- | --- | --- | --- |
 | Raspberry Pi 4 | Debian GNU/Linux 13.7 (trixie) | `aarch64` | `6.18.60+rpt-rpi-v8` |
 | Raspberry Pi 5 | Debian GNU/Linux 13.7 (trixie) | `aarch64` | `6.18.50+rpt-rpi-2712` |
-
-The driver must be built against headers matching the running kernel. Other operating systems and kernel versions have not been tested.
 
 ## Specifications
 
@@ -41,14 +38,14 @@ The driver must be built against headers matching the running kernel. Other oper
 
 | AC014 opposite-side FPC cable × 1 |
 | :---: |
-| <img src="docs/images/ac014-fpc.webp" alt="AC014 opposite-side FPC cable" width="240"> |
+| <img src="images/ac014-fpc.webp" alt="AC014 opposite-side FPC cable" width="240"> |
 | 15P 1.0 mm to 15P 1.0 mm |
 
 #### Pi 5 parts
 
 | AC006 opposite-side FPC cable × 1 | 22P-to-22P ribbon cable × 1 | 22P-to-31P adapter × 1 |
 | :---: | :---: | :---: |
-| <img src="docs/images/ac006-fpc.webp" alt="AC006 opposite-side FPC cable" width="240"> | <img src="docs/images/22p-fpc.png" alt="22P-to-22P ribbon cable" width="240"> | <img src="docs/images/22p-to-31p-adapter.png" alt="22P-to-31P adapter" width="120"> |
+| <img src="images/ac006-fpc.webp" alt="AC006 opposite-side FPC cable" width="240"> |  |  |
 | 31P 0.3 mm to 31P 0.3 mm | 22P to 22P | 22P to 31P |
 
 ### HDMI
@@ -253,6 +250,16 @@ v4l2-ctl -d /dev/rk628-video \
 
 ## Verification
 
+### Install verification dependencies
+
+```bash
+sudo apt install -y \
+  gstreamer1.0-tools gstreamer1.0-plugins-base \
+  gstreamer1.0-plugins-good gstreamer1.0-gl gstreamer1.0-alsa
+```
+
+### media-initd
+
 Check that media-initd is working. Skip this step if you have not installed media-initd.
 
 ```bash
@@ -275,7 +282,9 @@ Nov 18 20:17:05 pi5 sh[768]: Waiting for RK628 and a stable HDMI signal
 Nov 18 20:17:14 pi5 sh[768]: Ready: /dev/rk628-video 1920x1080 UYVY
 ```
 
-Check the video capture driver:
+### Driver loading
+
+Video driver:
 
 ```bash
 sudo dmesg | grep -i rk628
@@ -290,18 +299,7 @@ rk628-csi-v4l2 found @ 0xa0 (rk3x-i2c)
 rk628_csi_format_change: New format: 1920x1080p60.00 (2200x1125)
 ```
 
-Capture 300 frames to `/dev/null` and check the frame rate and dropped-buffer messages.
-
-```bash
-v4l2-ctl -d /dev/rk628-video --get-fmt-video
-v4l2-ctl -d /dev/rk628-video \
-  --stream-mmap=4 --stream-count=300 --stream-to=/dev/null
-echo $?
-```
-
-On successful completion, the exit code is 0 and 300 frames have been captured. The reported frame rate should be close to the HDMI input frame rate, with no `VIDIOC_STREAMON` errors or persistent `dropped buffers` messages. Press `Ctrl+C` to stop early.
-
-Check the audio capture driver:
+Audio driver:
 
 ```bash
 arecord -l
@@ -316,16 +314,88 @@ card 3: RK628HDMI [RK628HDMI], device 0: bcm2835-i2s-dir-hifi dir-hifi-0 [bcm283
   Subdevice #0: subdevice #0
 ```
 
-Test audio capture:
+### Video capture and playback
+
+Capture 300 frames to `/dev/null` and check the frame rate and dropped-buffer messages.
+
+```bash
+v4l2-ctl -d /dev/rk628-video --get-fmt-video
+v4l2-ctl -d /dev/rk628-video \
+  --stream-mmap=4 --stream-count=300 --stream-to=/dev/null
+echo $?
+```
+
+On successful completion, the exit code is 0 and 300 frames have been captured. The reported frame rate should be close to the HDMI input frame rate, with no `VIDIOC_STREAMON` errors or persistent `dropped buffers` messages. Press `Ctrl+C` to stop early.
+
+> [!NOTE]
+> Both GStreamer video playback commands below assume a 1920×1080 HDMI input at 60 fps. Query the actual input timings first, then set `width`, `height`, and `framerate` accordingly:
+>
+> - Pi 4: `v4l2-ctl -d /dev/rk628-video --query-dv-timings`
+> - Pi 5: `v4l2-ctl -d /dev/rk628-subdev --query-dv-timings`
+>
+> `Active width` and `Active height` correspond to `width` and `height`; 60 fps corresponds to `framerate=60/1`. These timings describe the HDMI input received by RK628, independently of the Raspberry Pi desktop display resolution.
+
+Play live video on the display:
+
+```bash
+gst-launch-1.0 -e \
+  v4l2src device=/dev/rk628-video io-mode=dmabuf do-timestamp=true ! \
+    video/x-raw,format=UYVY,width=1920,height=1080,framerate=60/1 ! \
+    queue max-size-buffers=2 max-size-bytes=0 max-size-time=0 leaky=downstream ! \
+    glimagesink sync=true
+```
+
+An HDMI preview should appear on the desktop. Press Ctrl+C to stop.
+
+### Audio capture and playback
+
+> [!NOTE]
+> The recording and combined audio/video playback commands below assume a 48000 Hz HDMI audio input. On both Pi 4 and Pi 5, use the following command to query the actual sample rate and audio status:
+>
+> ```bash
+> v4l2-ctl -d /dev/rk628-subdev \
+>   --get-ctrl=audio_sampling_rate,audio_present
+> ```
+>
+> When `audio_sampling_rate` is `48000`, use `-r 48000` with `arecord` and `rate=48000` with GStreamer. If it is `44100`, change both values to `44100`. An `audio_present` value of `1` means audio is detected. If it is `0`, confirm that the source is sending audio over HDMI, wait for the signal to stabilize, and query again.
+
+Record:
 
 ```bash
 arecord -D hw:CARD=RK628HDMI,DEV=0 \
-  -t raw -f S32_LE -r 48000 -c 2 -d 10 /dev/null
+  -t wav -f S32_LE -r 48000 -c 2 -d 10 rk628-audio.wav
 
 echo $?
 ```
 
 The exit code is 0 on successful completion.
+
+Play the recording:
+
+```
+gst-launch-1.0 -e \
+  filesrc location=rk628-audio.wav ! wavparse ! \
+  audioconvert ! audioresample ! pulsesink
+```
+
+### Simultaneous audio and video playback
+
+Select the audio output device in the desktop volume menu before playback.
+
+```
+gst-launch-1.0 -e \
+  v4l2src device=/dev/rk628-video io-mode=dmabuf do-timestamp=true ! \
+    video/x-raw,format=UYVY,width=1920,height=1080,framerate=60/1 ! \
+    queue max-size-buffers=2 max-size-bytes=0 max-size-time=0 leaky=downstream ! \
+    glimagesink sync=true \
+  alsasrc device="hw:CARD=RK628HDMI,DEV=0" \
+    buffer-time=40000 latency-time=5000 ! \
+    audio/x-raw,format=S32LE,rate=48000,channels=2 ! \
+    queue ! audioconvert ! audioresample ! \
+    pulsesink buffer-time=40000 latency-time=5000 sync=true
+```
+
+An HDMI preview should appear on the desktop, and HDMI audio should play through the default system audio output. Press Ctrl+C to stop.
 
 ## Upgrade
 

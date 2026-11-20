@@ -7,15 +7,12 @@
 
 该项目为 `瑞莎 4K HDMI IN 转 MIPI CSI-2 转接板` 在 Raspberry Pi4/5 上的驱动程序，支持音频、视频采集。
 
-
 ## 已测试环境
 
 | 平台 | 系统 | 架构 | 内核 |
 | --- | --- | --- | --- |
 | Raspberry Pi 4 | Debian GNU/Linux 13.7 (trixie) | `aarch64` | `6.18.60+rpt-rpi-v8` |
 | Raspberry Pi 5 | Debian GNU/Linux 13.7 (trixie) | `aarch64` | `6.18.50+rpt-rpi-2712` |
-
-驱动需使用与当前运行内核匹配的头文件构建。其他系统及内核版本尚未验证。
 
 ## 关键参数
 - 转接板提供 2-lane 和 4-lane 两种 MIPI CSI-2 接口，目前在 Pi5上仅支持 4-lane 接口，Pi4 上仅支持 2-lane 接口。
@@ -40,14 +37,14 @@
 
 | AC014 异面 FPC 排线 × 1 |
 | :---: |
-| <img src="docs/images/ac014-fpc.webp" alt="AC014 异面 FPC 排线" width="240"> |
+| <img src="images/ac014-fpc.webp" alt="AC014 异面 FPC 排线" width="240"> |
 | 15P 1.0 mm 转 15P 1.0 mm |
 
 #### Pi5 配件
 
 | AC006 异面 FPC 排线 × 1 | 22P 转 22P 排线 × 1 | 22P-to-31P 转接板 × 1 |
 | :---: | :---: | :---: |
-| <img src="docs/images/ac006-fpc.webp" alt="AC006 异面 FPC 排线" width="240"> | <img src="docs/images/22p-fpc.png" alt="22P 转 22P 排线" width="240"> | <img src="docs/images/22p-to-31p-adapter.png" alt="22P-to-31P 转接板" width="120"> |
+| <img src="images/ac006-fpc.webp" alt="AC006 异面 FPC 排线" width="240"> |  |  |
 | 31P 0.3 mm 转 31P 0.3 mm | 22P 转 22P | 22P 转 31P |
 
 ### HDMI
@@ -252,6 +249,16 @@ v4l2-ctl -d /dev/rk628-video \
 
 ## 验证
 
+### 安装验证依赖
+
+```bash
+sudo apt install -y \
+  gstreamer1.0-tools gstreamer1.0-plugins-base \
+  gstreamer1.0-plugins-good gstreamer1.0-gl gstreamer1.0-alsa
+```
+
+### media-initd
+
 验证 media-initd 是否正常运行，未部署 media-initd 的用户可以跳过此步骤。
 
 ```bash
@@ -274,7 +281,9 @@ Nov 18 20:17:05 pi5 sh[768]: Waiting for RK628 and a stable HDMI signal
 Nov 18 20:17:14 pi5 sh[768]: Ready: /dev/rk628-video 1920x1080 UYVY
 ```
 
-验证视频采集驱动
+### 驱动加载
+
+视频驱动：
 
 ```bash
 sudo dmesg | grep -i rk628
@@ -289,18 +298,7 @@ rk628-csi-v4l2 found @ 0xa0 (rk3x-i2c)
 rk628_csi_format_change: New format: 1920x1080p60.00 (2200x1125)
 ```
 
-实际采集 300 帧到 `/dev/null`，查看帧率和丢帧提示。
-
-```bash
-v4l2-ctl -d /dev/rk628-video --get-fmt-video
-v4l2-ctl -d /dev/rk628-video \
-  --stream-mmap=4 --stream-count=300 --stream-to=/dev/null
-echo $?
-```
-
-正常完成时退出码为 0，完成 300 帧采集，打印的帧率接近 HDMI 输入帧率，且没有 `VIDIOC_STREAMON` 错误或持续的 `dropped buffers` 提示。需要提前停止时按 `Ctrl+C`。
-
-验证音频采集驱动
+音频驱动：
 
 ```bash
 arecord -l
@@ -315,16 +313,88 @@ card 3: RK628HDMI [RK628HDMI], device 0: bcm2835-i2s-dir-hifi dir-hifi-0 [bcm283
   Subdevice #0: subdevice #0
 ```
 
-测试音频采集
+### 视频采集与播放
+
+实际采集 300 帧到 `/dev/null`，查看帧率和丢帧提示。
+
+```bash
+v4l2-ctl -d /dev/rk628-video --get-fmt-video
+v4l2-ctl -d /dev/rk628-video \
+  --stream-mmap=4 --stream-count=300 --stream-to=/dev/null
+echo $?
+```
+
+正常完成时退出码为 0，完成 300 帧采集，打印的帧率接近 HDMI 输入帧率，且没有 `VIDIOC_STREAMON` 错误或持续的 `dropped buffers` 提示。需要提前停止时按 `Ctrl+C`。
+
+> [!NOTE]
+> 下方两处 GStreamer 视频播放命令以 1920×1080、60 fps 的 HDMI 输入为例。请先查询实际输入时序，并将命令中的 `width`、`height` 和 `framerate` 改为对应值：
+>
+> - Pi4：`v4l2-ctl -d /dev/rk628-video --query-dv-timings`
+> - Pi5：`v4l2-ctl -d /dev/rk628-subdev --query-dv-timings`
+>
+> `Active width` 和 `Active height` 分别对应 `width` 和 `height`；60 fps 对应 `framerate=60/1`。这里查询的是 RK628 接收的 HDMI 输入，与树莓派桌面显示器的分辨率无关。
+
+实时播放视频到屏幕：
+
+```bash
+gst-launch-1.0 -e \
+  v4l2src device=/dev/rk628-video io-mode=dmabuf do-timestamp=true ! \
+    video/x-raw,format=UYVY,width=1920,height=1080,framerate=60/1 ! \
+    queue max-size-buffers=2 max-size-bytes=0 max-size-time=0 leaky=downstream ! \
+    glimagesink sync=true
+```
+
+正常情况下桌面会出现 HDMI 预览画面，按 Ctrl+C 停止运行。
+
+### 音频采集与播放
+
+> [!NOTE]
+> 录音和下方同时播放音视频的命令均以 48000 Hz 的 HDMI 音频输入为例。Pi4、Pi5 都可以使用以下命令查询实际采样率和音频状态：
+>
+> ```bash
+> v4l2-ctl -d /dev/rk628-subdev \
+>   --get-ctrl=audio_sampling_rate,audio_present
+> ```
+>
+> `audio_sampling_rate` 为 `48000` 时，`arecord` 使用 `-r 48000`，GStreamer 使用 `rate=48000`；如果为 `44100`，两处均改为 `44100`。`audio_present` 为 `1` 表示检测到音频；如果为 `0`，请确认输入源正在通过 HDMI 输出声音，等待信号稳定后重新查询。
+
+采集：
 
 ```bash
 arecord -D hw:CARD=RK628HDMI,DEV=0 \
-  -t raw -f S32_LE -r 48000 -c 2 -d 10 /dev/null
+  -t wav -f S32_LE -r 48000 -c 2 -d 10 rk628-audio.wav
 
 echo $?
 ```
 
 正常完成时退出码为 0
+
+播放：
+
+```
+gst-launch-1.0 -e \
+  filesrc location=rk628-audio.wav ! wavparse ! \
+  audioconvert ! audioresample ! pulsesink
+```
+
+### 同时播放音频和视频
+
+请提前在桌面音量菜单中选择音频播放设备
+
+```
+gst-launch-1.0 -e \
+  v4l2src device=/dev/rk628-video io-mode=dmabuf do-timestamp=true ! \
+    video/x-raw,format=UYVY,width=1920,height=1080,framerate=60/1 ! \
+    queue max-size-buffers=2 max-size-bytes=0 max-size-time=0 leaky=downstream ! \
+    glimagesink sync=true \
+  alsasrc device="hw:CARD=RK628HDMI,DEV=0" \
+    buffer-time=40000 latency-time=5000 ! \
+    audio/x-raw,format=S32LE,rate=48000,channels=2 ! \
+    queue ! audioconvert ! audioresample ! \
+    pulsesink buffer-time=40000 latency-time=5000 sync=true
+```
+
+正常情况下，桌面会显示 HDMI 预览画面，系统默认音频输出设备会播放 HDMI 声音。按 Ctrl+C 停止。
 
 ## 升级
 

@@ -6,31 +6,8 @@ set -eu
 PROJECT_DIR=$(cd "$(dirname "$0")/.." && pwd -P)
 . "$PROJECT_DIR/scripts/common.sh"
 
-usage() {
-  echo "Usage: sudo sh scripts/uninstall.sh -p pi4|pi5 [-c all|service]"
-  echo "Default: driver, DTBO and udev rules"
-  echo "  -c service  Media service"
-  echo "  -c all      All"
-}
-
-parse_options "$@"
+[ "$#" -eq 0 ] || die "Usage: sudo ./scripts/uninstall.sh"
 [ "$(id -u)" -eq 0 ] || die "Run with sudo"
-
-if [ "$COMPONENT" = service ] || [ "$COMPONENT" = all ]; then
-  select_media_service
-  command -v systemctl >/dev/null 2>&1 || die "Missing command: systemctl"
-  SERVICE_FILE=/etc/systemd/system/$SERVICE_NAME
-  if [ -e "$SERVICE_FILE" ] || [ -L "$SERVICE_FILE" ]; then
-    print REMOVE "$SERVICE_NAME"
-    systemctl disable --now "$SERVICE_NAME"
-  fi
-  rm -f "$SERVICE_FILE" "/usr/local/libexec/rk628/$MEDIA_SCRIPT"
-  systemctl daemon-reload
-  if [ "$COMPONENT" = service ]; then
-    printf '\nService removed\n'
-    exit 0
-  fi
-fi
 
 if [ -d /boot/firmware/overlays ]; then
   OVERLAY_DIR=/boot/firmware/overlays
@@ -58,8 +35,10 @@ for directory in /usr/src/"$PACKAGE_NAME"-*; do
   rm -rf -- "$directory"
 done
 
-print REMOVE "$OVERLAY_DIR/rk628-$PLATFORM.dtbo"
-rm -f "$OVERLAY_DIR/rk628-$PLATFORM.dtbo"
+for platform in pi4 pi5; do
+  print REMOVE "$OVERLAY_DIR/rk628-$platform.dtbo"
+  rm -f "$OVERLAY_DIR/rk628-$platform.dtbo"
+done
 
 print REMOVE "/etc/udev/rules.d/99-rk628.rules"
 rm -f /etc/udev/rules.d/99-rk628.rules

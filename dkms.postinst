@@ -14,15 +14,11 @@ else
   echo "Error: overlays directory not found" >&2
   exit 1
 fi
-PLATFORM=$(grep '^RK628_PLATFORM=' dkms.conf | cut -d'"' -f2)
-case "$PLATFORM" in
-  pi4|pi5) ;;
-  *) echo "Error: invalid RK628_PLATFORM in dkms.conf" >&2; exit 1 ;;
-esac
-
 BUILD_DIR=$(mktemp -d)
 trap 'rm -rf "$BUILD_DIR"' EXIT
-make dtbo PLATFORM="$PLATFORM" BUILD_DIR="$BUILD_DIR"
+make dtbo BUILD_DIR="$BUILD_DIR"
 
-print INSTALL "$OVERLAY_DIR/rk628-$PLATFORM.dtbo"
-install -m 644 "$BUILD_DIR/rk628-$PLATFORM.dtbo" "$OVERLAY_DIR/rk628-$PLATFORM.dtbo"
+for platform in pi4 pi5; do
+  print INSTALL "$OVERLAY_DIR/rk628-$platform.dtbo"
+  install -m 644 "$BUILD_DIR/rk628-$platform.dtbo" "$OVERLAY_DIR/rk628-$platform.dtbo"
+done

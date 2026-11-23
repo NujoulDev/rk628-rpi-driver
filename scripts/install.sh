@@ -6,14 +6,7 @@ set -eu
 PROJECT_DIR=$(cd "$(dirname "$0")/.." && pwd -P)
 . "$PROJECT_DIR/scripts/common.sh"
 
-usage() {
-  echo "Usage: sudo sh scripts/install.sh -p pi4|pi5 [-c all|service]"
-  echo "Default: driver, DTBO and udev rules"
-  echo "  -c service  Media service and udev rules"
-  echo "  -c all      All"
-}
-
-parse_options "$@"
+[ "$#" -eq 0 ] || die "Usage: sudo ./scripts/install.sh"
 [ "$(id -u)" -eq 0 ] || die "Run with sudo"
 
 command -v udevadm >/dev/null 2>&1 || die "Missing command: udevadm"
@@ -24,28 +17,6 @@ install_udev() {
   install -D -m 644 "$PROJECT_DIR/udev/99-rk628.rules" "/etc/udev/rules.d/99-rk628.rules"
   reload_udev
 }
-
-install_service() {
-  print INSTALL "/usr/local/libexec/rk628/$MEDIA_SCRIPT"
-  install -D -m 755 "$PROJECT_DIR/scripts/$MEDIA_SCRIPT" "/usr/local/libexec/rk628/$MEDIA_SCRIPT"
-  print INSTALL "/etc/systemd/system/$SERVICE_NAME"
-  install -D -m 644 "$PROJECT_DIR/systemd/$SERVICE_NAME" \
-    "/etc/systemd/system/$SERVICE_NAME"
-  systemctl daemon-reload
-}
-
-if [ "$COMPONENT" = service ] || [ "$COMPONENT" = all ]; then
-  select_media_service
-  command -v systemctl >/dev/null 2>&1 || die "Missing command: systemctl"
-  [ -f "$PROJECT_DIR/scripts/$MEDIA_SCRIPT" ] || die "Missing scripts/$MEDIA_SCRIPT"
-  [ -f "$PROJECT_DIR/systemd/$SERVICE_NAME" ] || die "Missing service file"
-fi
-if [ "$COMPONENT" = service ]; then
-  install_udev
-  install_service
-  printf '\nService installed\n'
-  exit 0
-fi
 
 KERNEL_RELEASE=$(uname -r)
 command -v dkms >/dev/null 2>&1 || die "Missing command: dkms"
@@ -59,8 +30,6 @@ DKMS_SRC=/usr/src/$PACKAGE_NAME-$PACKAGE_VERSION
 case "$PROJECT_DIR" in
   /usr/src/"$PACKAGE_NAME"-*) die "Run from your checkout, not /usr/src" ;;
 esac
-
-sed -i "s/^RK628_PLATFORM=.*/RK628_PLATFORM=\"$PLATFORM\"/" "$PROJECT_DIR/dkms.conf"
 
 find_versions
 for version in $VERSIONS; do
@@ -89,9 +58,5 @@ print DKMS "install for $KERNEL_RELEASE"
 dkms install -m "$PACKAGE_NAME" -v "$PACKAGE_VERSION" -k "$KERNEL_RELEASE" --force
 
 install_udev
-
-if [ "$COMPONENT" = all ]; then
-  install_service
-fi
 
 printf '\nDone.\n'

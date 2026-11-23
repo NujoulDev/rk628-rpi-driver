@@ -7,16 +7,7 @@ DTS_CPP ?= cpp
 DTC_FLAGS := -@ -Wno-unit_address_vs_reg -I dts -O dtb
 BUILD_DIR := $(CURDIR)/build
 SOURCES := $(wildcard *.c *.h)
-PLATFORM ?= $(shell grep '^RK628_PLATFORM=' dkms.conf | cut -d'"' -f2)
-DTBO := $(BUILD_DIR)/rk628-$(PLATFORM).dtbo
-
-ifneq ($(filter all dtbo,$(or $(MAKECMDGOALS),all)),)
-ifneq ($(PLATFORM),pi4)
-ifneq ($(PLATFORM),pi5)
-$(error Specify PLATFORM=pi4 or PLATFORM=pi5)
-endif
-endif
-endif
+DTBO := $(BUILD_DIR)/rk628-pi4.dtbo $(BUILD_DIR)/rk628-pi5.dtbo
 
 .PHONY: all modules module dtbo prepare clean
 all: modules dtbo

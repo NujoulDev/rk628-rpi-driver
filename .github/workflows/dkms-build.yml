@@ -1,0 +1,101 @@
+name: Build DKMS package
+
+on:
+  workflow_call:
+    inputs:
+      upstream-ref:
+        description: Driver source branch, tag or commit
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04-arm
+    container: debian:trixie
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Install build tools
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            build-essential dpkg-dev git ca-certificates
+
+      - name: Checkout packaging recipe
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          path: recipe
+          persist-credentials: false
+
+      - name: Checkout driver source
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ inputs.upstream-ref }}
+          path: upstream
+          persist-credentials: false
+
+      - name: Prepare source and recipe
+        id: prepare
+        run: |
+          package=$(dpkg-parsechangelog -l recipe/debian/changelog -S Source)
+          version=$(dpkg-parsechangelog -l recipe/debian/changelog -S Version)
+          source_sha=$(git -C upstream rev-parse HEAD)
+          recipe_sha=$(git -C recipe rev-parse HEAD)
+          {
+            echo "package=$package"
+            echo "version=$version"
+          } >> "$GITHUB_OUTPUT"
+
+          mkdir -p build/source artifacts
+          git -C upstream archive HEAD | tar -x -C build/source
+          cp -a recipe/debian build/source/
+          {
+            echo "Package: $package"
+            echo "Version: $version"
+            echo "Source commit: $source_sha"
+            echo "Recipe commit: $recipe_sha"
+          } | tee artifacts/BUILD-INFO.txt
+
+      - name: Install package build dependencies
+        working-directory: build/source
+        run: apt-get build-dep -y --no-install-recommends ./
+
+      - name: Build package
+        working-directory: build/source
+        run: |
+          dpkg-buildpackage -us -uc -b 2>&1 \
+            | tee "$GITHUB_WORKSPACE/build/build.log"
+
+      - name: Collect artifacts
+        run: |
+          cp build/*.deb build/*.changes build/*.buildinfo build/build.log artifacts/
+          cd artifacts
+          sha256sum ./*.deb > SHA256SUMS
+
+      - name: Upload package artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ steps.prepare.outputs.package }}_${{ steps.prepare.outputs.version }}
+          path: artifacts/
+          if-no-files-found: error
+          retention-days: 30
+          overwrite: true
+
+      - name: Record build result
+        if: ${{ always() && steps.prepare.outcome == 'success' }}
+        env:
+          RESULT: ${{ job.status }}
+        run: |
+          {
+            echo '### DKMS package build'
+            echo
+            cat artifacts/BUILD-INFO.txt
+            echo
+            echo "Result: $RESULT"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -7,18 +7,9 @@ DTS_CPP ?= cpp
 DTC_FLAGS := -@ -Wno-unit_address_vs_reg -I dts -O dtb
 BUILD_DIR := $(CURDIR)/build
 SOURCES := $(wildcard *.c *.h)
-PLATFORM ?= $(shell grep '^RK628_PLATFORM=' dkms.conf | cut -d'"' -f2)
-DTBO := $(BUILD_DIR)/rk628-$(PLATFORM).dtbo
+DTBO := $(BUILD_DIR)/rk628-pi4.dtbo $(BUILD_DIR)/rk628-pi5.dtbo
 
-ifneq ($(filter all dtbo,$(or $(MAKECMDGOALS),all)),)
-ifneq ($(PLATFORM),pi4)
-ifneq ($(PLATFORM),pi5)
-$(error Specify PLATFORM=pi4 or PLATFORM=pi5)
-endif
-endif
-endif
-
-.PHONY: all modules module dtbo prepare clean
+.PHONY: all modules module obj dtbo prepare clean
 all: modules dtbo
 module: modules
 
@@ -30,6 +21,10 @@ prepare:
 
 modules: prepare
 	$(MAKE) -C "$(KDIR)" M="$(BUILD_DIR)" modules
+
+obj: prepare
+	$(MAKE) -C "$(KDIR)" M="$(BUILD_DIR)" \
+		video-rk628.o rk628-csi.o rk628-hdmirx-class.o
 
 dtbo: $(DTBO)
 

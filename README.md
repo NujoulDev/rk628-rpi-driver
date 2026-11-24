@@ -109,7 +109,7 @@ ls "/lib/modules/$(uname -r)/build/Makefile"
 Clone the source:
 
 ```bash
-git clone https://github.com/Nujoul1/rk628-rpi-driver.git
+git clone https://github.com/NujoulDev/rk628-rpi-driver.git
 cd rk628-rpi-driver
 ```
 

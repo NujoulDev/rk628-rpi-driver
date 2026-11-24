@@ -1,0 +1,27 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    uses: ./.github/workflows/checks.yml
+
+  kmod:
+    needs: checks
+    uses: ./.github/workflows/rpi-kmod-build.yml
+
+  upstream:
+    needs: checks
+    uses: ./.github/workflows/upstream-kmod-build.yml

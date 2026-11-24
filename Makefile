@@ -9,7 +9,7 @@ BUILD_DIR := $(CURDIR)/build
 SOURCES := $(wildcard *.c *.h)
 DTBO := $(BUILD_DIR)/rk628-pi4.dtbo $(BUILD_DIR)/rk628-pi5.dtbo
 
-.PHONY: all modules module dtbo prepare clean
+.PHONY: all modules module obj dtbo prepare clean
 all: modules dtbo
 module: modules
 
@@ -21,6 +21,10 @@ prepare:
 
 modules: prepare
 	$(MAKE) -C "$(KDIR)" M="$(BUILD_DIR)" modules
+
+obj: prepare
+	$(MAKE) -C "$(KDIR)" M="$(BUILD_DIR)" \
+		video-rk628.o rk628-csi.o rk628-hdmirx-class.o
 
 dtbo: $(DTBO)
 

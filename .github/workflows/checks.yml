@@ -1,0 +1,36 @@
+name: Source checks
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout driver source
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Check shell syntax
+        run: |
+          for script in scripts/*.sh dkms.postinst; do
+            sh -n "$script"
+          done
+          bash -n dkms.conf
+
+      - name: Install overlay build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential device-tree-compiler
+
+      - name: Build Pi 4 and Pi 5 overlays
+        run: |
+          make dtbo
+          test -s build/rk628-pi4.dtbo
+          test -s build/rk628-pi5.dtbo

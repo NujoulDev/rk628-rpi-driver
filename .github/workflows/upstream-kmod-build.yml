@@ -1,0 +1,64 @@
+name: Upstream kernel compatibility
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Default branch / objects (advisory)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    continue-on-error: true
+    env:
+      ARCH: arm64
+      CROSS_COMPILE: aarch64-linux-gnu-
+    steps:
+      - name: Checkout driver source
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Checkout upstream default branch
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          repository: raspberrypi/linux
+          path: rpi-linux
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Install kernel build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential crossbuild-essential-arm64 \
+            bc bison flex libssl-dev libelf-dev
+
+      - name: Prepare upstream headers
+        run: |
+          make -C rpi-linux bcm2712_defconfig
+          make -C rpi-linux -j"$(nproc)" modules_prepare
+
+      - name: Compile RK628 objects
+        run: |
+          make -j"$(nproc)" obj KDIR="$PWD/rpi-linux"
+          for module in video-rk628 rk628-csi rk628-hdmirx-class; do
+            test -s "build/$module.o"
+          done
+
+      - name: Report upstream compatibility warning
+        if: ${{ failure() }}
+        run: echo "::warning::RK628 failed against the upstream default kernel branch. This advisory check does not block stable kernel builds."
+
+      - name: Record upstream version
+        if: ${{ always() }}
+        run: |
+          if [ -d rpi-linux/.git ]; then
+            {
+              echo "### Upstream default branch (advisory)"
+              echo "- Version: $(make --no-print-directory -sC rpi-linux kernelversion)"
+              echo "- Commit: $(git -C rpi-linux rev-parse HEAD)"
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi

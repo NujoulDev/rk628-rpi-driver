@@ -1,0 +1,12 @@
+#!/bin/sh
+set -e
+
+case "$1" in
+    remove|purge)
+        # Do not remove overlays during upgrade or failed unpack rollback.
+        rm -f -- /boot/firmware/overlays/rk628-pi4.dtbo \
+            /boot/firmware/overlays/rk628-pi5.dtbo
+        ;;
+esac
+
+#DEBHELPER#

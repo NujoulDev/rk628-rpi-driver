@@ -1,8 +1,13 @@
-Local binary package build
-==========================
+Build
+=====
 
-This branch contains packaging only. Driver source remains on main.
-Run from the repository root with main fetched and the packaging branch checked out:
+Packaging rules for 64-bit Raspberry Pi OS. Driver source is on main.
+
+Install the build dependencies:
+
+    sudo apt install build-essential debhelper dh-dkms device-tree-compiler
+
+From debian/latest, with the local main branch up to date:
 
     builddir=$(mktemp -d)
     mkdir "$builddir/source"
@@ -11,33 +16,18 @@ Run from the repository root with main fetched and the packaging branch checked 
     cd "$builddir/source"
     dpkg-buildpackage -us -uc -b
 
-Build dependencies: debhelper-compat (= 13), dh-dkms,
-device-tree-compiler, cpp. Output is in the parent of source/.
-The source dkms.conf version must match the upstream changelog version.
+The .deb is generated in "$builddir". The upstream version in debian/changelog
+must match PACKAGE_VERSION in main's dkms.conf.
 
-Installation and scope
-======================
+Installation
+============
 
-This package targets 64-bit Raspberry Pi OS with /boot/firmware/overlays.
-It requires both Pi 4 (rpi-v8) and Pi 5 (rpi-2712) headers so the same
-package has the appropriate platform headers. Raspberry Pi's APT repository
-must be configured. On the target, install the downloaded package with:
+Remove any previous source installation first. On the Raspberry Pi:
 
-    sudo apt install ./rk628-rpi-dkms_0.1.0-1_all.deb
+    sudo apt install ./rk628-rpi-dkms_0.1.0-2_all.deb
 
-Update the target system and reboot first when its running kernel has no
-matching installed headers. DKMS compilation does not test HDMI/CSI hardware.
-Uninstall any previous manual installation before switching to this package;
-the source installer and dpkg must not manage the same DKMS source or rules.
+Configure the overlay in /boot/firmware/config.txt following main's README.
 
-The package delivers driver sources and dkms.conf under /usr/src,
-two compiled overlays under /boot/firmware/overlays, and vendor udev rules
-under /usr/lib/udev/rules.d. DKMS manages module registration and removal.
-The source installer POST_INSTALL hook is omitted from the packaged dkms.conf
-because dpkg manages the overlays directly. Package removal removes these
-files; boot configuration changes made by the user remain the user's task.
+Uninstall:
 
-The package does not modify config.txt, activate an overlay, reboot,
-install media-initd, or provide PiKVM OS packaging. Source installation on
-other systems remains available from main. No automated publishing is
-included at this stage.
+    sudo apt purge rk628-rpi-dkms

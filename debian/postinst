@@ -1,0 +1,35 @@
+#!/bin/sh
+set -e
+
+case "$1" in
+    configure)
+        # Never silently write into the root filesystem below an unmounted boot.
+        if ! mountpoint -q /boot/firmware; then
+            echo "RK628: mount /boot/firmware before configuring this package." >&2
+            exit 1
+        fi
+        test -d /boot/firmware/overlays
+        for board in pi4 pi5; do
+            test -s "/usr/share/rk628-rpi-dkms/overlays/rk628-$board.dtbo"
+        done
+        ;;
+esac
+
+# Build/register the modules before replacing boot overlays.
+#DEBHELPER#
+
+case "$1" in
+    configure)
+        # FAT has no hard links. Copy to a temporary file on the same partition
+        # and rename it over the destination instead of using dpkg's backup link.
+        temporary=
+        trap 'if [ -n "$temporary" ]; then rm -f -- "$temporary"; fi' 0
+        trap 'exit 1' HUP INT TERM
+        for board in pi4 pi5; do
+            temporary=$(mktemp "/boot/firmware/overlays/.rk628-$board.XXXXXX")
+            cp -- "/usr/share/rk628-rpi-dkms/overlays/rk628-$board.dtbo" "$temporary"
+            mv -f -- "$temporary" "/boot/firmware/overlays/rk628-$board.dtbo"
+            temporary=
+        done
+        ;;
+esac

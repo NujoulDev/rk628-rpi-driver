@@ -1,0 +1,31 @@
+#!/usr/bin/make -f
+
+include /usr/share/dpkg/pkg-info.mk
+
+DKMS_VERSION := $(shell sed -n 's/^PACKAGE_VERSION="\(.*\)"/\1/p' dkms.conf)
+DKMS_DEST = usr/src/rk628-rpi-dkms-$(DKMS_VERSION)
+
+%:
+	dh $@ --with dkms
+
+# Modules are built by DKMS on the target, not by the package builder.
+override_dh_auto_build:
+	test "$(subst -,~,$(DKMS_VERSION))" = "$(DEB_VERSION_UPSTREAM)"
+	$(MAKE) dtbo BUILD_DIR=$(CURDIR)/debian/overlays
+	# dpkg owns the prebuilt overlays; skip the source install's DKMS hook.
+	sed '/^POST_INSTALL=/d' dkms.conf > debian/dkms.conf
+
+override_dh_auto_install:
+
+override_dh_auto_test:
+
+override_dh_install:
+	dh_install *.c *.h Makefile Kbuild include COPYING LICENSES $(DKMS_DEST)
+	dh_install debian/overlays/*.dtbo boot/firmware/overlays
+
+override_dh_installudev:
+	cp udev/99-rk628.rules debian/rk628-rpi-dkms.rk628.udev
+	dh_installudev --name=rk628 --priority=99
+
+override_dh_auto_clean:
+	$(MAKE) clean

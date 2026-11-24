@@ -1,0 +1,18 @@
+Source: rk628-rpi-dkms
+Section: kernel
+Priority: optional
+Maintainer: Luo Jun <luojun@radxa.com>
+Build-Depends: debhelper-compat (= 13), dh-dkms, device-tree-compiler, cpp
+Standards-Version: 4.7.0
+Rules-Requires-Root: no
+Homepage: https://github.com/NujoulDev/rk628-rpi-driver
+
+Package: rk628-rpi-dkms
+Architecture: all
+Depends: ${misc:Depends}, dkms, udev, linux-headers-rpi-v8, linux-headers-rpi-2712
+Description: RK628 driver and overlays for 64-bit Raspberry Pi OS
+ Out-of-tree RK628 video and HDMI receiver modules built by DKMS for
+ installed kernels. Includes overlays for Raspberry Pi 4 and 5 and udev
+ rules providing stable device names.
+ .
+ Overlay activation in the boot configuration remains a manual operation.

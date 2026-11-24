@@ -1,0 +1,5 @@
+rk628-rpi-dkms (0.1.0-1) unstable; urgency=medium
+
+  * Initial Debian package for Raspberry Pi OS.
+
+ -- Luo Jun <luojun@radxa.com>  Tue, 24 Nov 2026 16:00:00 +0800

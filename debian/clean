@@ -1,0 +1,3 @@
+debian/dkms.conf
+debian/overlays/
+debian/rk628-rpi-dkms.rk628.udev

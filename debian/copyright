@@ -1,0 +1,60 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: rk628-rpi-driver
+Source: https://github.com/NujoulDev/rk628-rpi-driver
+
+Files: *
+Copyright: 2020-2023 Rockchip Electronics Co., Ltd.
+           2026 Luo Jun <luojun@radxa.com>
+License: GPL-2
+
+Files: include/media/v4l2-controls_rockchip.h
+Copyright: 2015 Intel Mobile Communications GmbH
+           2016 Fuzhou Rockchip Electronics Co., Ltd.
+License: GPL-2+
+
+Files: include/linux/soc/rockchip/rk_vendor_storage.h
+Copyright: 2016 Fuzhou Rockchip Electronics Co., Ltd.
+License: GPL-2+
+
+Files: include/linux/rk-camera-module.h include/linux/rk-video-format.h
+       include/linux/rk_hdmirx_config.h
+Copyright: 2018-2022 Rockchip Electronics Co., Ltd.
+License: GPL-2+ with Linux-syscall-note
+Comment: Distributed under the GPL option of the upstream dual license,
+ as described in COPYING.
+
+Files: debian/*
+Copyright: 2026 Luo Jun <luojun@radxa.com>
+License: GPL-2
+
+License: GPL-2
+ This program is free software; you can redistribute it and/or modify it
+ under the terms of version 2 of the GNU General Public License, published
+ by the Free Software Foundation.
+ .
+ On Debian systems, the complete license is in
+ /usr/share/common-licenses/GPL-2.
+
+License: GPL-2+
+ This program is free software; you can redistribute it and/or modify it
+ under the terms of the GNU General Public License, published by the Free
+ Software Foundation; either version 2, or (at your option) any later version.
+ .
+ On Debian systems, the complete version 2 license is in
+ /usr/share/common-licenses/GPL-2.
+
+License: GPL-2+ with Linux-syscall-note
+ The GPL-2+ terms above apply, with the following exception:
+ .
+ NOTE! This copyright does *not* cover user programs that use kernel
+ services by normal system calls - this is merely considered normal use
+ of the kernel, and does *not* fall under the heading of "derived work".
+ Also note that the GPL below is copyrighted by the Free Software
+ Foundation, but the instance of code that it refers to (the Linux
+ kernel) is copyrighted by me and others who actually wrote it.
+ .
+ Also note that the only valid version of the GPL as far as the kernel
+ is concerned is _this_ particular version of the license (ie v2, not
+ v2.2 or v3.x or whatever), unless explicitly otherwise stated.
+ .
+ Linus Torvalds

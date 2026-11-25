@@ -174,4 +174,4 @@ if ! git show-ref --verify --quiet "refs/tags/$recipe_tag"; then
     git tag -a "$recipe_tag" "$recipe_sha" -m "$package $version"
 fi
 git push --atomic "$remote" "refs/tags/$source_tag" "refs/tags/$recipe_tag"
-echo "Tags pushed. Watch https://github.com/$repo/actions for the release draft."
+echo "Tags pushed. Watch https://github.com/$repo/actions for the release."

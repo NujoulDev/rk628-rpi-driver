@@ -1,4 +1,4 @@
-name: Release draft
+name: Release
 
 on:
   push:
@@ -53,4 +53,3 @@ jobs:
       source-sha: ${{ needs.verify.outputs.source-sha }}
       recipe-sha: ${{ needs.verify.outputs.recipe-sha }}
       artifact: ${{ needs.verify.outputs.artifact }}
-      release-tag: ${{ github.ref_name }}

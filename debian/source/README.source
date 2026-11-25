@@ -50,8 +50,3 @@ both source and packaging CI to pass, then:
 
     ./release.sh              # Preview the source and packaging tags
     ./release.sh --execute    # Create and push the tags
-
-Source tags use v<driver-version>; packaging tags use debian/<package-version>.
-A packaging tag triggers a build from the fixed source commit and creates
-an independent Release draft with the .deb, source archive and checksums.
-Review the draft on GitHub and publish it manually.

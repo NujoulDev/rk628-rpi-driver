@@ -1,3 +1,9 @@
+rk628-rpi-dkms (0.1.1-2) unstable; urgency=medium
+
+  * Publish Debian packages on the driver source-tag Release.
+
+ -- Luo Jun <luojun@radxa.com>  Wed, 25 Nov 2026 13:43:11 +0800
+
 rk628-rpi-dkms (0.1.1-1) unstable; urgency=medium
 
   * Package driver version 0.1.1.

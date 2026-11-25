@@ -1,0 +1,56 @@
+name: Release draft
+
+on:
+  push:
+    tags: ['debian/**']
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04-arm
+    outputs:
+      package: ${{ steps.verify.outputs.package }}
+      version: ${{ steps.verify.outputs.version }}
+      source-tag: ${{ steps.verify.outputs.source-tag }}
+      source-sha: ${{ steps.verify.outputs.source-sha }}
+      recipe-sha: ${{ steps.verify.outputs.recipe-sha }}
+      artifact: ${{ steps.verify.outputs.artifact }}
+    steps:
+      - name: Checkout tagged packaging recipe
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify release tags and CI results
+        id: verify
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./release.sh --verify-tag "$GITHUB_REF_NAME"
+
+  build:
+    needs: verify
+    uses: ./.github/workflows/dkms-build.yml
+    with:
+      upstream-ref: ${{ needs.verify.outputs.source-sha }}
+
+  publish:
+    needs: [verify, build]
+    uses: ./.github/workflows/dkms-publish.yml
+    permissions:
+      contents: write
+      actions: read
+    with:
+      package: ${{ needs.verify.outputs.package }}
+      version: ${{ needs.verify.outputs.version }}
+      source-tag: ${{ needs.verify.outputs.source-tag }}
+      source-sha: ${{ needs.verify.outputs.source-sha }}
+      recipe-sha: ${{ needs.verify.outputs.recipe-sha }}
+      artifact: ${{ needs.verify.outputs.artifact }}
+      release-tag: ${{ github.ref_name }}

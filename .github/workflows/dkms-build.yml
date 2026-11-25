@@ -55,6 +55,8 @@ jobs:
           mkdir -p build/source artifacts
           git -C upstream archive HEAD | tar -x -C build/source
           cp -a recipe/debian build/source/
+          git -C upstream archive --prefix="$package-$version/" HEAD \
+            | gzip -n > "artifacts/${package}_${version}.source.tar.gz"
           {
             echo "Package: $package"
             echo "Version: $version"
@@ -75,8 +77,8 @@ jobs:
       - name: Collect artifacts
         run: |
           cp build/*.deb build/*.changes build/*.buildinfo build/build.log artifacts/
-          cd artifacts
-          sha256sum ./*.deb > SHA256SUMS
+          cd artifacts || exit 1
+          sha256sum ./*.deb ./*.source.tar.gz ./*.changes ./*.buildinfo ./BUILD-INFO.txt > SHA256SUMS
 
       - name: Upload package artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

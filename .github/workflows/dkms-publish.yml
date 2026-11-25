@@ -1,0 +1,91 @@
+name: Publish DKMS release draft
+
+on:
+  workflow_call:
+    inputs:
+      package:
+        type: string
+        required: true
+      version:
+        type: string
+        required: true
+      source-tag:
+        type: string
+        required: true
+      source-sha:
+        type: string
+        required: true
+      recipe-sha:
+        type: string
+        required: true
+      artifact:
+        type: string
+        required: true
+      release-tag:
+        type: string
+        required: true
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - name: Download release build
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ inputs.artifact }}
+          path: artifacts/
+
+      - name: Verify and publish draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PACKAGE: ${{ inputs.package }}
+          VERSION: ${{ inputs.version }}
+          SOURCE_TAG: ${{ inputs.source-tag }}
+          SOURCE_SHA: ${{ inputs.source-sha }}
+          RECIPE_SHA: ${{ inputs.recipe-sha }}
+          RELEASE_TAG: ${{ inputs.release-tag }}
+        shell: bash
+        run: |
+          cd artifacts || exit 1
+          sha256sum --check SHA256SUMS
+          for field in "Package: $PACKAGE" "Version: $VERSION" \
+            "Source commit: $SOURCE_SHA" "Recipe commit: $RECIPE_SHA"; do
+            grep -Fxq "$field" BUILD-INFO.txt
+          done
+          deb="${PACKAGE}_${VERSION}_all.deb"
+          test "$(dpkg-deb -f "$deb" Package)" = "$PACKAGE"
+          test "$(dpkg-deb -f "$deb" Version)" = "$VERSION"
+          test -s "${PACKAGE}_${VERSION}.source.tar.gz"
+          dpkg-deb --extract "$deb" "$RUNNER_TEMP/release-package"
+          gzip -dc "$RUNNER_TEMP/release-package/usr/share/doc/$PACKAGE/changelog.Debian.gz" \
+            > "$RUNNER_TEMP/release-changelog"
+          notes="$RUNNER_TEMP/release-notes.md"
+          {
+            echo "Source: [$SOURCE_TAG](https://github.com/$GITHUB_REPOSITORY/tree/$SOURCE_TAG)"
+            echo
+            awk 'NR==1 {next} /^ -- / {exit} {print}' "$RUNNER_TEMP/release-changelog"
+          } > "$notes"
+          files=("$deb" "${PACKAGE}_${VERSION}.source.tar.gz" \
+            ./*.changes ./*.buildinfo SHA256SUMS BUILD-INFO.txt)
+          if draft=$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+            --json isDraft --jq .isDraft); then
+            test "$draft" = true || {
+              echo '::error::This release is already public. Use a new package revision.'
+              exit 1
+            }
+            gh release upload "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+              --clobber "${files[@]}"
+          else
+            flags=(--draft --verify-tag)
+            if [[ $VERSION == *'~'* ]]; then flags+=(--prerelease); fi
+            gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+              --title "$PACKAGE $VERSION" --notes-file "$notes" \
+              "${flags[@]}" "${files[@]}"
+          fi

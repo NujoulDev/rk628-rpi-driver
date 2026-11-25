@@ -1,3 +1,11 @@
+rk628-rpi-dkms (0.1.1-1) unstable; urgency=medium
+
+  * Package driver version 0.1.1.
+  * Separate media-initd from the driver and simplify installation scripts.
+  * Build overlays for both Raspberry Pi 4 and 5 without platform selection.
+
+ -- Luo Jun <luojun@radxa.com>  Wed, 25 Nov 2026 11:29:34 +0800
+
 rk628-rpi-dkms (0.1.0-2) unstable; urgency=medium
 
   * Install overlays from /usr/share using maintainer scripts to support

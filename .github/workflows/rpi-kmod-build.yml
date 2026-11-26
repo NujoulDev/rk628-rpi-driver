@@ -30,65 +30,21 @@ jobs:
       LC_ALL: C
       FLAVOUR: ${{ matrix.flavour }}
     steps:
-      - name: Install build tools and configure Raspberry Pi APT source
+      - name: Install checkout dependencies
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends \
-            build-essential ca-certificates curl gnupg git kmod \
-            bc bison flex libssl-dev libelf-dev pahole
-          mkdir -p /etc/apt/keyrings
-          # The legacy key URL has a SHA-1 certification rejected by trixie's sqv.
-          # Use the refreshed certificate from the official rpi-image-gen fix.
-          curl --fail --silent --show-error --location --retry 3 \
-            https://raw.githubusercontent.com/raspberrypi/rpi-image-gen/1f5851b24a6ac25b91edfaed5f2b59e770d0ac9e/keydir/raspberrypi-archive-keyring.gpg \
-            -o /etc/apt/keyrings/raspberrypi.gpg
-          fingerprint=$(gpg --batch --show-keys --with-colons /etc/apt/keyrings/raspberrypi.gpg \
-            | awk -F: '$1 == "fpr" {print $10; exit}')
-          test "$fingerprint" = CF8A1AF502A2AA2D763BAE7E82B129927FA3303E
-          echo "deb [arch=arm64 signed-by=/etc/apt/keyrings/raspberrypi.gpg] https://archive.raspberrypi.com/debian/ trixie main" \
-            > /etc/apt/sources.list.d/raspberrypi.list
-          apt-get update
+          apt-get install -y --no-install-recommends git ca-certificates
 
       - name: Checkout driver source
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
 
-      - name: Install current stable headers
-        id: headers
-        run: |
-          apt-get install -y --no-install-recommends "linux-headers-$FLAVOUR"
-          headers_version=$(dpkg-query -W -f='${Version}' "linux-headers-$FLAVOUR")
-          kernel_version=$(apt-cache policy "linux-image-$FLAVOUR" | awk '$1 == "Candidate:" {print $2}')
-          test "$headers_version" = "$kernel_version"
-          # The runner kernel is unrelated to the target; do not use uname -r.
-          mapfile -t directories < <(find /usr/src -maxdepth 1 -type d -name "linux-headers-*-$FLAVOUR")
-          test "${#directories[@]}" -eq 1
-          kdir=${directories[0]}
-          release=$(cat "$kdir/include/config/kernel.release")
-          grep -qx 'CONFIG_ARM64=y' "$kdir/.config"
-          test -s "$kdir/Module.symvers"
-          dpkg-query -W 'linux-headers-*' 'linux-kbuild-*'
-          echo "kdir=$kdir" >> "$GITHUB_OUTPUT"
-          echo "release=$release" >> "$GITHUB_OUTPUT"
-          {
-            echo "### Raspberry Pi OS / $FLAVOUR"
-            echo "- Source: Raspberry Pi trixie/main, arm64"
-            echo "- Kernel: $release"
-            echo "- Package version: $headers_version"
-          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Prepare Raspberry Pi OS headers
+        run: bash .github/scripts/prepare-pios.sh "$RUNNER_TEMP/kernel.env"
 
       - name: Build and verify RK628 modules
-        env:
-          KDIR: ${{ steps.headers.outputs.kdir }}
-          KERNEL_RELEASE: ${{ steps.headers.outputs.release }}
-        run: |
-          make -j"$(nproc)" module KDIR="$KDIR"
-          for module in video-rk628 rk628-csi rk628-hdmirx-class; do
-            test -s "build/$module.ko"
-            actual=$(modinfo -F vermagic "build/$module.ko")
-            test "${actual%% *}" = "$KERNEL_RELEASE"
-          done
+        run: bash .github/scripts/build-kmod.sh "$RUNNER_TEMP/kernel.env"
 
       - name: Record build result
         if: ${{ always() }}
@@ -115,7 +71,6 @@ jobs:
           persist-credentials: false
 
       - name: Prepare official Arch Linux ARM container
-        # Use an official rootfs instead of relying on a third-party ARM image.
         run: |
           curl --fail --location --retry 3 --connect-timeout 20 --max-time 900 \
             https://de3.mirror.archlinuxarm.org/os/ArchLinuxARM-rpi-aarch64-latest.tar.gz \
@@ -123,55 +78,18 @@ jobs:
           docker import --platform linux/arm64 \
             "$RUNNER_TEMP/archlinuxarm.tar.gz" rk628-archlinuxarm:ci
 
-      - name: Install stable headers with Pacman and build modules
+      - name: Prepare PiKVM headers and build modules
         run: |
           touch "$GITHUB_STEP_SUMMARY"
-          docker run --rm -i \
+          docker run --rm \
             -v "$GITHUB_WORKSPACE:/workspace" -w /workspace \
             -v "$GITHUB_STEP_SUMMARY:/ci-summary" \
             -e PIKVM_REPOSITORY -e ARCH=arm64 -e LC_ALL=C \
-            rk628-archlinuxarm:ci /bin/bash -euo pipefail <<'BUILD'
-          # Follow the PiKVM build environment's Pacman/keyring setup.
-          mkdir -p /etc/pacman.d/hooks
-          ln -sf /dev/null /etc/pacman.d/hooks/30-systemd-tmpfiles.hook
-          sed -i 's/^#DisableSandbox/DisableSandbox/' /etc/pacman.conf
-          echo 'Server = https://de3.mirror.archlinuxarm.org/$arch/$repo' > /etc/pacman.d/mirrorlist
-          pacman-key --init
-          pacman-key --populate archlinuxarm
-          pacman-key --keyserver hkps://keyserver.ubuntu.com:443 --recv-keys 912C773ABBD1B584 \
-            || pacman-key --keyserver hkps://keys.gnupg.net:443 --recv-keys 912C773ABBD1B584
-          pacman-key --lsign-key 912C773ABBD1B584
-          {
-            echo '[pikvm]'
-            echo "Server = $PIKVM_REPOSITORY"
-            echo 'SigLevel = Required DatabaseOptional'
-          } >> /etc/pacman.conf
-          pacman --noconfirm --ask=4 -Syu --needed \
-            base-devel bc libelf openssl kmod python pahole linux-rpi-headers-pikvm
-
-          headers_version=$(pacman -Q linux-rpi-headers-pikvm | awk '{print $2}')
-          kernel_version=$(pacman -Si linux-rpi-pikvm | awk '$1 == "Version" {print $3}')
-          test "$headers_version" = "$kernel_version"
-          mapfile -t directories < <(pacman -Qlq linux-rpi-headers-pikvm | sed -n 's#/build/Makefile$#/build#p')
-          test "${#directories[@]}" -eq 1
-          kdir=${directories[0]}
-          release=$(cat "$kdir/include/config/kernel.release")
-          grep -qx 'CONFIG_ARM64=y' "$kdir/.config"
-          test -s "$kdir/Module.symvers"
-          pacman -Q gcc linux-rpi-headers-pikvm
-          {
-            echo "### PiKVM OS / $PIKVM_REPOSITORY"
-            echo "- Package version: $headers_version"
-            echo "- Kernel: $release"
-          } >> /ci-summary
-
-          make -j"$(nproc)" module KDIR="$kdir"
-          for module in video-rk628 rk628-csi rk628-hdmirx-class; do
-            test -s "build/$module.ko"
-            actual=$(modinfo -F vermagic "build/$module.ko")
-            test "${actual%% *}" = "$release"
-          done
-          BUILD
+            -e GITHUB_STEP_SUMMARY=/ci-summary \
+            rk628-archlinuxarm:ci /bin/bash -euo pipefail -c '
+              bash .github/scripts/prepare-pikvm.sh /tmp/kernel.env
+              bash .github/scripts/build-kmod.sh /tmp/kernel.env
+            '
 
       - name: Record build result
         if: ${{ always() }}

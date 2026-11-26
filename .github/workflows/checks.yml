@@ -22,6 +22,9 @@ jobs:
             sh -n "$script"
           done
           bash -n dkms.conf
+          for script in .github/scripts/*.sh; do
+            bash -n "$script"
+          done
 
       - name: Install overlay build dependencies
         run: |

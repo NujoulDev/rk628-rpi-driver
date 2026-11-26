@@ -73,71 +73,53 @@
 | DET | GPIO25，物理脚 **22** |
 | INT | GPIO17，物理脚 **11** |
 
-## media-initd 介绍
-
-media-initd 是可选的视频采集配置服务，启动后等待第一个稳定的 HDMI 信号，设置分辨率、格式及 Pi5 的采集链路，配置成功后退出。
-
-更换 HDMI 输入源、修改分辨率或重新插拔 HDMI 后，可重启 media-initd，或手动配置，参考[视频采集配置](#视频采集配置)。由应用程序自行配置采集链路时无需启用 media-initd。
-
 ## 安装与配置
 
-以下步骤适用于原生 Raspberry Pi OS。安装脚本默认安装驱动模块、设备树覆盖文件、DKMS 配置和 udev 规则；media-initd 按需安装。
+以下步骤适用于 **64 位 Raspberry Pi OS**。驱动安装后，再配置设备树 overlay。
 
-### 依赖安装
+### 驱动安装
+
+选择下面任意一种方式。安装后，继续配置 overlay 并重启。
+
+#### 从 .deb 安装
+
+从 [最新 Release](https://github.com/NujoulDev/rk628-rpi-driver/releases/latest) 下载 `rk628-rpi-dkms` 的 `.deb`。
+
+在下载目录执行以下命令，把 `PACKAGE.deb` 换成实际文件名。
+
+```bash
+sudo apt update
+sudo apt install ./PACKAGE.deb
+```
+
+#### 从源码安装
+
+先安装编译工具和当前内核的头文件。
 
 ```bash
 sudo apt update
 sudo apt install -y \
   git ca-certificates \
   build-essential dkms device-tree-compiler \
-  "linux-headers-$(uname -r)" \
-  v4l-utils alsa-utils
+  "linux-headers-$(uname -r)"
 ```
 
-检查当前内核版本，以及匹配的头文件构建目录是否存在
+检查当前内核版本和头文件是否匹配。
 
 ```bash
 uname -r
 ls "/lib/modules/$(uname -r)/build/Makefile"
 ```
 
-### 驱动安装
-
-拉取源码
+下载源码并运行安装脚本。
 
 ```bash
 git clone https://github.com/NujoulDev/rk628-rpi-driver.git
 cd rk628-rpi-driver
+sudo ./scripts/install.sh
 ```
 
-脚本参数表：
-
-以下参数适用于 `scripts/install.sh` 和 `scripts/uninstall.sh`。
-
-| 参数 | 可选值 | 说明 |
-| --- | --- | --- |
-| `-p` | `pi4`、`pi5` | 必填，选择平台 |
-| `-c` | `service`、`all` | 可选，省略时处理驱动、DTBO 和 udev 规则；`all` 还处理 media-initd；`service` 仅处理 media-initd，安装时也会安装其依赖的 udev 规则，卸载时保留规则 |
-| `-h`、`--help` | 无 | 显示帮助 |
-
-安装驱动和 media-initd，根据平台将 `pi5` 替换为 `pi4`：
-
-```bash
-sudo ./scripts/install.sh -p pi5 -c all
-```
-
-不需要 media-initd 时，省略 `-c all`：
-
-```bash
-sudo ./scripts/install.sh -p pi5
-```
-
-看到 “Done” 后，启用 media-initd，没有安装 media-initd 的用户可以跳过此步骤。
-
-```bash
-# 根据平台选择 “pi4” 或 “pi5”
-sudo systemctl enable rk628-media-initd-pi5.service
-```
+看到 `Done.` 表示脚本已完成安装。
 
 ### overlay 配置
 
@@ -203,16 +185,21 @@ sudo reboot
 ls -l /dev/rk628-*
 ```
 
-配置好 [media-initd](#media-initd-介绍) 的用户可以跳过首次开机后的手动配置。更换 HDMI 输入源、修改输入分辨率或重新插拔 HDMI 后，先停止正在运行的采集程序，再重启 media-initd，按当前 HDMI 信号自动重新配置：
+视频采集前，选择下面任意一种方式配置。
+
+#### 使用 media-initd 自动配置
+
+按 [rk628-media-initd 的安装说明](https://github.com/NujoulDev/rk628-media-initd#readme) 安装服务。它会在启动后等待 HDMI 信号稳定，然后自动配置一次采集设备。
+
+更换 HDMI 输入源、修改分辨率或重新插拔 HDMI 后，先停止正在运行的采集程序，再重启服务。
 
 ```bash
-# 根据平台选择 “pi4” 或 “pi5”
-sudo systemctl restart rk628-media-initd-pi5.service
+sudo systemctl restart rk628-media-initd.service
 ```
 
-也可以使用下方命令手动配置，视频分辨率必须与 `--query-dv-timings` 的查询结果一致。
+#### 手动配置
 
-手动配置视频分辨率和格式：
+先用 `sudo apt install v4l-utils` 安装配置工具。查询 HDMI 输入时序，再按实际分辨率设置视频格式。Pi 5 还需要配置采集链路。
 
 Pi4 上的参考命令：
 
@@ -236,13 +223,13 @@ media-ctl -d /dev/rk628-media \
   -l '"csi2":4 -> "rp1-cfe-csi2_ch0":0 [1]'
 
 media-ctl -d /dev/rk628-media \
-  -V '"csi2":0 [fmt:UYVY8_1X16/3840x2160 field:none]'
+  -V '"csi2":0 [fmt:UYVY8_1X16/1920x1080 field:none]'
 
 media-ctl -d /dev/rk628-media \
-  -V '"csi2":4 [fmt:UYVY8_1X16/3840x2160 field:none]'
+  -V '"csi2":4 [fmt:UYVY8_1X16/1920x1080 field:none]'
 
 v4l2-ctl -d /dev/rk628-video \
-  --set-fmt-video=width=3840,height=2160,pixelformat=UYVY
+  --set-fmt-video=width=1920,height=1080,pixelformat=UYVY
 ```
 
 ## 验证
@@ -251,32 +238,24 @@ v4l2-ctl -d /dev/rk628-video \
 
 ```bash
 sudo apt install -y \
+  v4l-utils alsa-utils \
   gstreamer1.0-tools gstreamer1.0-plugins-base \
   gstreamer1.0-plugins-good gstreamer1.0-gl gstreamer1.0-alsa
 ```
 
 ### media-initd
 
-验证 media-initd 是否正常运行，未部署 media-initd 的用户可以跳过此步骤。
+安装了 media-initd 的用户，可以用以下命令查看服务状态和本次开机日志。
 
 ```bash
-# 根据平台选择 “pi4” 或 “pi5”
-systemctl status rk628-media-initd-pi5.service
+systemctl status rk628-media-initd.service
+sudo journalctl -u rk628-media-initd.service -b
 ```
-正确启用会有以下类似输出：
 
-```bash
-● rk628-media-initd-pi5.service - RK628 Pi 5 media initialization
-     Loaded: loaded (/etc/systemd/system/rk628-media-initd-pi5.service; enabled; preset: enabled)
-     Active: active (exited) since Wed 2026-11-18 20:17:05 CST; 1min 15s ago
- Invocation: 2c4a2f35c78644aaaa6a16d38b3e20eb
-    Process: 768 ExecStart=/bin/sh /usr/local/libexec/rk628/media-initd-pi5.sh (code=exited, status=0/SUCCESS)
-   Main PID: 768 (code=exited, status=0/SUCCESS)
-        CPU: 358ms
+日志出现 `Ready:` 表示采集配置完成。下面是 1080p 输入的日志示例。
 
-Nov 18 20:17:05 pi5 systemd[1]: Started rk628-media-initd-pi5.service - RK628 Pi 5 media initialization.
-Nov 18 20:17:05 pi5 sh[768]: Waiting for RK628 and a stable HDMI signal
-Nov 18 20:17:14 pi5 sh[768]: Ready: /dev/rk628-video 1920x1080 UYVY
+```text
+Ready: /dev/rk628-video 1920x1080 UYVY
 ```
 
 ### 驱动加载
@@ -396,22 +375,29 @@ gst-launch-1.0 -e \
 
 ## 升级
 
-使用最新的代码，按首次安装时选择的组件重新安装并重启。下面以 Pi5 同时安装 media-initd 为例；未使用 media-initd 时省略 `-c all` 和 `systemctl enable` 命令。更新后的 DTBO 需重启后生效。
+- **通过 .deb 安装**的用户，从 [最新 Release](https://github.com/NujoulDev/rk628-rpi-driver/releases/latest) 下载新版，按[安装步骤](#从-deb-安装)用 APT 安装。
+- **通过源码安装**的用户，在新版源码目录运行 `sudo ./scripts/install.sh`。
 
-```bash
-# 根据平台选择 “pi4” 或 “pi5”
-sudo ./scripts/install.sh -p pi5 -c all
-sudo systemctl enable rk628-media-initd-pi5.service
-sudo reboot
-```
+升级驱动后重启，让新模块和 overlay 生效。如果需要升级 [media-initd](https://github.com/NujoulDev/rk628-media-initd)，另外下载它的新版 `.deb` 并用 APT 安装。
 
 ## 卸载
 
-运行卸载脚本
+如果安装了 media-initd，先卸载它。
 
 ```bash
-# 根据平台选择 “pi4” 或 “pi5”
-sudo ./scripts/uninstall.sh -p pi5 -c all
+sudo apt purge rk628-media-initd
+```
+
+通过 `.deb` 安装驱动的用户，用 APT 卸载。
+
+```bash
+sudo apt purge rk628-rpi-dkms
+```
+
+通过源码安装驱动的用户，在源码目录运行卸载脚本。
+
+```bash
+sudo ./scripts/uninstall.sh
 ```
 
 删除对 `/boot/firmware/config.txt` 的修改

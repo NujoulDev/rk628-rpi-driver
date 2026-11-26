@@ -74,73 +74,53 @@ For Pi 5, use a `31pin to 31pin` ribbon cable to connect the adapter's 4-lane MI
 | DET | GPIO25, physical pin **22** |
 | INT | GPIO17, physical pin **11** |
 
-## About media-initd
-
-media-initd is an optional service for configuring video capture. It waits for the first stable HDMI signal, sets the resolution and format, configures the capture pipeline on Pi 5, and exits once configuration is complete.
-
-For officially supported Raspberry Pi cameras, this configuration is handled by `libcamera` in userspace.
-
-After changing the HDMI source or resolution, or reconnecting HDMI, restart media-initd or configure capture manually; see [Video capture configuration](#video-capture-configuration). Applications that configure the capture pipeline themselves do not need media-initd.
-
 ## Installation and configuration
 
-The following steps apply to standard Raspberry Pi OS. By default, the installation script installs the driver modules, device tree overlays, DKMS configuration, and udev rules. Install media-initd if needed.
+These instructions apply to **64-bit Raspberry Pi OS**.
 
-### Install dependencies
+### Driver installation
+
+Choose either installation method, then configure the device tree overlay and reboot.
+
+#### From a .deb
+
+Download the `rk628-rpi-dkms` package from the [latest Release](https://github.com/NujoulDev/rk628-rpi-driver/releases/latest).
+
+In the download directory, replace `PACKAGE.deb` with the downloaded filename and run these commands.
+
+```bash
+sudo apt update
+sudo apt install ./PACKAGE.deb
+```
+
+#### From source
+
+Install the build tools and headers for the running kernel.
 
 ```bash
 sudo apt update
 sudo apt install -y \
   git ca-certificates \
   build-essential dkms device-tree-compiler \
-  "linux-headers-$(uname -r)" \
-  v4l-utils alsa-utils
+  "linux-headers-$(uname -r)"
 ```
 
-Check the running kernel version and confirm that the build directory for the matching headers exists:
+Check the running kernel version and confirm that the matching headers are available.
 
 ```bash
 uname -r
 ls "/lib/modules/$(uname -r)/build/Makefile"
 ```
 
-### Install the driver
-
-Clone the source:
+Clone the repository and run the installer.
 
 ```bash
 git clone https://github.com/NujoulDev/rk628-rpi-driver.git
 cd rk628-rpi-driver
+sudo ./scripts/install.sh
 ```
 
-Script options:
-
-The following options apply to both `scripts/install.sh` and `scripts/uninstall.sh`.
-
-| Option | Values | Description |
-| --- | --- | --- |
-| `-p` | `pi4`, `pi5` | Required; selects the platform |
-| `-c` | `service`, `all` | Optional. When omitted, handles the driver, DTBO, and udev rules. `all` also handles media-initd. `service` handles only media-initd; installation also installs its required udev rules, while uninstallation leaves the rules in place |
-| `-h`, `--help` | None | Show help |
-
-Install the driver and media-initd. Replace `pi5` with `pi4` for Pi 4:
-
-```bash
-sudo ./scripts/install.sh -p pi5 -c all
-```
-
-Omit `-c all` if you do not need media-initd:
-
-```bash
-sudo ./scripts/install.sh -p pi5
-```
-
-Once `Done` appears, enable media-initd. Skip this step if you did not install media-initd.
-
-```bash
-# Choose "pi4" or "pi5" for your platform
-sudo systemctl enable rk628-media-initd-pi5.service
-```
+The installer prints `Done.` when installation is complete.
 
 ### Overlay configuration
 
@@ -206,16 +186,21 @@ View the corresponding symbolic links:
 ls -l /dev/rk628-*
 ```
 
-If you have configured [media-initd](#about-media-initd), you can skip manual configuration after the first boot. After changing the HDMI source or input resolution, or reconnecting HDMI, stop any running capture applications and restart media-initd to automatically configure capture for the current HDMI signal:
+Choose one of the following methods to configure video capture.
+
+#### Automatic configuration with media-initd
+
+Follow the [rk628-media-initd installation instructions](https://github.com/NujoulDev/rk628-media-initd#readme). The service waits for a stable HDMI signal and configures capture once each time it starts.
+
+After switching HDMI sources, changing the input resolution, or reconnecting HDMI, stop any running capture application and restart the service.
 
 ```bash
-# Choose "pi4" or "pi5" for your platform
-sudo systemctl restart rk628-media-initd-pi5.service
+sudo systemctl restart rk628-media-initd.service
 ```
 
-You can also configure capture manually using the commands below. The video resolution must match the result of `--query-dv-timings`.
+#### Manual configuration
 
-Manually configure the video resolution and format:
+Install the configuration tools with `sudo apt install v4l-utils`. Query the HDMI input timings and set the video format to match the input resolution. On Pi 5, also configure the capture pipeline.
 
 Example commands for Pi 4:
 
@@ -239,13 +224,13 @@ media-ctl -d /dev/rk628-media \
   -l '"csi2":4 -> "rp1-cfe-csi2_ch0":0 [1]'
 
 media-ctl -d /dev/rk628-media \
-  -V '"csi2":0 [fmt:UYVY8_1X16/3840x2160 field:none]'
+  -V '"csi2":0 [fmt:UYVY8_1X16/1920x1080 field:none]'
 
 media-ctl -d /dev/rk628-media \
-  -V '"csi2":4 [fmt:UYVY8_1X16/3840x2160 field:none]'
+  -V '"csi2":4 [fmt:UYVY8_1X16/1920x1080 field:none]'
 
 v4l2-ctl -d /dev/rk628-video \
-  --set-fmt-video=width=3840,height=2160,pixelformat=UYVY
+  --set-fmt-video=width=1920,height=1080,pixelformat=UYVY
 ```
 
 ## Verification
@@ -254,32 +239,24 @@ v4l2-ctl -d /dev/rk628-video \
 
 ```bash
 sudo apt install -y \
+  v4l-utils alsa-utils \
   gstreamer1.0-tools gstreamer1.0-plugins-base \
   gstreamer1.0-plugins-good gstreamer1.0-gl gstreamer1.0-alsa
 ```
 
 ### media-initd
 
-Check that media-initd is working. Skip this step if you have not installed media-initd.
+If you installed media-initd, check the service status and the logs for the current boot.
 
 ```bash
-# Choose "pi4" or "pi5" for your platform
-systemctl status rk628-media-initd-pi5.service
+systemctl status rk628-media-initd.service
+sudo journalctl -u rk628-media-initd.service -b
 ```
-When enabled and configured successfully, the output should look similar to this:
 
-```bash
-● rk628-media-initd-pi5.service - RK628 Pi 5 media initialization
-     Loaded: loaded (/etc/systemd/system/rk628-media-initd-pi5.service; enabled; preset: enabled)
-     Active: active (exited) since Wed 2026-11-18 20:17:05 CST; 1min 15s ago
- Invocation: 2c4a2f35c78644aaaa6a16d38b3e20eb
-    Process: 768 ExecStart=/bin/sh /usr/local/libexec/rk628/media-initd-pi5.sh (code=exited, status=0/SUCCESS)
-   Main PID: 768 (code=exited, status=0/SUCCESS)
-        CPU: 358ms
+A `Ready:` message indicates that capture is configured. For a 1080p input, it looks like this.
 
-Nov 18 20:17:05 pi5 systemd[1]: Started rk628-media-initd-pi5.service - RK628 Pi 5 media initialization.
-Nov 18 20:17:05 pi5 sh[768]: Waiting for RK628 and a stable HDMI signal
-Nov 18 20:17:14 pi5 sh[768]: Ready: /dev/rk628-video 1920x1080 UYVY
+```text
+Ready: /dev/rk628-video 1920x1080 UYVY
 ```
 
 ### Driver loading
@@ -399,22 +376,29 @@ An HDMI preview should appear on the desktop, and HDMI audio should play through
 
 ## Upgrade
 
-Use the latest source, reinstall the same components you selected during the initial installation, and reboot. The example below installs media-initd on Pi 5 as well. If you do not use media-initd, omit `-c all` and the `systemctl enable` command. The updated DTBO takes effect after rebooting.
+- **Installed from a .deb**. Download the new package from the [latest Release](https://github.com/NujoulDev/rk628-rpi-driver/releases/latest) and [install it with APT](#from-a-deb).
+- **Installed from source**. Run `sudo ./scripts/install.sh` from the updated source directory.
 
-```bash
-# Choose "pi4" or "pi5" for your platform
-sudo ./scripts/install.sh -p pi5 -c all
-sudo systemctl enable rk628-media-initd-pi5.service
-sudo reboot
-```
+Reboot to load the updated modules and overlay. To upgrade [media-initd](https://github.com/NujoulDev/rk628-media-initd), download and install its new `.deb` separately.
 
 ## Uninstall
 
-Run the uninstall script:
+If you installed media-initd, remove it first.
 
 ```bash
-# Choose "pi4" or "pi5" for your platform
-sudo ./scripts/uninstall.sh -p pi5 -c all
+sudo apt purge rk628-media-initd
+```
+
+If you installed the driver from a `.deb`, remove it with APT.
+
+```bash
+sudo apt purge rk628-rpi-dkms
+```
+
+If you installed the driver from source, run the uninstaller from the source directory.
+
+```bash
+sudo ./scripts/uninstall.sh
 ```
 
 Undo the changes to `/boot/firmware/config.txt`:

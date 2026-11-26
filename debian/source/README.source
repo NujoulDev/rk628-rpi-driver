@@ -22,9 +22,11 @@ must match PACKAGE_VERSION in main's dkms.conf.
 Installation
 ============
 
-Remove any previous source installation first. On the Raspberry Pi:
+Remove any previous source installation first. On the Raspberry Pi, run
+this from the directory containing the built package. Replace PACKAGE.deb
+with its actual filename.
 
-    sudo apt install ./rk628-rpi-dkms_0.1.0-2_all.deb
+    sudo apt install ./PACKAGE.deb
 
 Configure the overlay in /boot/firmware/config.txt following main's README.
 
